@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -e
+
+cd /app/backend
+
+# Run database migrations
+echo "Running database migrations..."
+python manage.py migrate --noinput
+
+# Create default superuser using management command
+echo "Creating default superuser..."
+python manage.py create_default_superuser
+
+exec "$@"
