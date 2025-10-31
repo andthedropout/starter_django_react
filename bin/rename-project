@@ -9,11 +9,27 @@ FIND_APP_NAME="helloweb"
 FIND_MODULE_NAME="Helloweb"
 FIND_FRAMEWORK="django-react"
 
+# Validate arguments are provided
 if [ -z "${APP_NAME}" ] || [ -z "${MODULE_NAME}" ]; then
     echo "You must supply both an app and module name, example: ${0} myapp MyApp"
     exit 1
 fi
 
+# Validate app name format (lowercase, no spaces, no special chars except underscore)
+if [[ ! "${APP_NAME}" =~ ^[a-z][a-z0-9_]*$ ]]; then
+    echo "❌ Error: APP_NAME must be lowercase, start with a letter, and contain only letters, numbers, and underscores"
+    echo "   Examples: myapp, my_app, myapp123"
+    exit 1
+fi
+
+# Validate module name format (PascalCase, no spaces, no special chars)
+if [[ ! "${MODULE_NAME}" =~ ^[A-Z][a-zA-Z0-9]*$ ]]; then
+    echo "❌ Error: MODULE_NAME must be PascalCase and contain only letters and numbers"
+    echo "   Examples: MyApp, MyNewApp, MyApp123"
+    exit 1
+fi
+
+# Check if name is different from current
 if [ "${APP_NAME}" = "${FIND_APP_NAME}" ]; then
     echo "Your new app name must be different than the current app name"
     exit 1
@@ -45,17 +61,42 @@ done
 # -----------------------------------------------------------------------------
 # The core of the script which renames a few things.
 # -----------------------------------------------------------------------------
+echo "🔄 Renaming project files..."
 find . -type f -exec \
   perl -i \
     -pe "s/(${FIND_APP_NAME}${FIND_FRAMEWORK}|${FIND_APP_NAME})/${APP_NAME}/g;" \
     -pe "s/${FIND_MODULE_NAME}/${MODULE_NAME}/g;" {} +
+
+# Update .env file if it exists
+if [ -f .env ]; then
+  echo "📝 Updating .env with new project name..."
+  perl -i -pe "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=${APP_NAME}/g" .env
+  perl -i -pe "s/POSTGRES_USER=.*/POSTGRES_USER=${APP_NAME}/g" .env
+  perl -i -pe "s/POSTGRES_DB=.*/POSTGRES_DB=${APP_NAME}/g" .env
+  echo "✅ .env updated"
+fi
+
+# Update .env.example as well
+if [ -f .env.example ]; then
+  echo "📝 Updating .env.example with new project name..."
+  perl -i -pe "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=${APP_NAME}/g" .env.example
+  perl -i -pe "s/POSTGRES_USER=.*/POSTGRES_USER=${APP_NAME}/g" .env.example
+  perl -i -pe "s/POSTGRES_DB=.*/POSTGRES_DB=${APP_NAME}/g" .env.example
+  echo "✅ .env.example updated"
+fi
 # -----------------------------------------------------------------------------
 
 cat << EOF
 
 --------------------------------------------------------
-Your project has been renamed successfully!
+✅ Your project has been renamed successfully!
 --------------------------------------------------------
+
+Changes made:
+  • App name:     ${FIND_APP_NAME} → ${APP_NAME}
+  • Module name:  ${FIND_MODULE_NAME} → ${MODULE_NAME}
+  • .env:         COMPOSE_PROJECT_NAME=${APP_NAME}
+  • Database:     POSTGRES_DB=${APP_NAME}
 
 EOF
 

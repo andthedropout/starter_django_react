@@ -4,13 +4,33 @@ set -e
 
 cd /app/backend
 
+# Check for critical environment variables
+if [ -z "$SECRET_KEY" ]; then
+    echo "⚠️  WARNING: SECRET_KEY not set. Using default (not secure for production!)"
+fi
+
+if [ -z "$POSTGRES_USER" ]; then
+    echo "❌ ERROR: POSTGRES_USER environment variable is not set"
+    exit 1
+fi
+
+# Note: Django's migrate command will automatically wait for PostgreSQL
+# No need for explicit waiting here - Django handles connection retries
+
 # Run database migrations
-echo "Running database migrations..."
-python manage.py migrate --noinput
+echo "📊 Running database migrations..."
+if ! python manage.py migrate --noinput; then
+    echo "❌ ERROR: Database migrations failed"
+    echo "   Check your database configuration and try again"
+    exit 1
+fi
+echo "✅ Migrations complete"
 
 # Create default superuser using management command
-echo "Creating default superuser..."
-python manage.py create_default_superuser
+echo "👤 Creating default superuser..."
+if ! python manage.py create_default_superuser; then
+    echo "⚠️  Note: Superuser creation skipped (may already exist)"
+fi
 
 # If supervisord is being started, ensure we're root and run it directly
 if [[ "$1" == "supervisord" ]]; then

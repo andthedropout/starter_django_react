@@ -85,6 +85,33 @@ Your app will be live at `https://your-app.up.railway.app`
 
 ### Setup
 
+#### Option 1: Automated Setup (Recommended)
+
+The fastest way to get started - one command does everything:
+
+```bash
+git clone https://github.com/andthedropout/starter_django_react.git
+cd starter_django_react
+./bin/setup
+```
+
+This will:
+- Create your `.env` file
+- Optionally rename the project (important to avoid Docker conflicts)
+- Start all services
+- Run database migrations
+- Show you the URLs and credentials
+
+Visit [http://localhost:8000](http://localhost:8000) and you're done!
+
+**Default credentials:**
+- Username: `admin`
+- Password: `changeme`
+
+#### Option 2: Manual Setup
+
+If you prefer step-by-step control:
+
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/andthedropout/starter_django_react.git
@@ -96,7 +123,14 @@ Your app will be live at `https://your-app.up.railway.app`
    cp .env.example .env
    ```
 
-3. **Start development environment:**
+3. **Important: Rename your project** (required if running multiple copies)
+   ```bash
+   ./bin/rename-project myproject MyProject
+   ```
+
+   Skip this only if you're running a single copy and won't clone the template again. Each clone needs a unique `COMPOSE_PROJECT_NAME` to avoid Docker container conflicts.
+
+4. **Start development environment:**
    ```bash
    docker compose up
    ```
@@ -106,20 +140,17 @@ Your app will be live at `https://your-app.up.railway.app`
    docker compose up -d
    ```
 
-4. **Run migrations (in a new terminal):**
+5. **Run migrations (in a new terminal):**
    ```bash
    docker compose exec web python manage.py migrate
-   ```
-
-5. **Create a superuser (optional):**
-   ```bash
-   docker compose exec web python manage.py createsuperuser
    ```
 
 6. **Visit the app:**
    Open [http://localhost:8000](http://localhost:8000)
 
-**Note:** To stop services, run `docker compose down`
+**Note:**
+- To stop services: `docker compose down`
+- Default superuser is auto-created: username `admin`, password `changeme`
 
 ## Project Structure
 
@@ -351,6 +382,16 @@ This template includes a flexible theming system that supports:
 
 ### Common Issues
 
+#### Docker is not running
+
+**Error:** `Cannot connect to the Docker daemon`
+
+**Solution:** Make sure Docker Desktop is running before executing commands:
+```bash
+# macOS/Windows: Open Docker Desktop application
+# Linux: systemctl start docker
+```
+
 #### Containers fail to start
 
 **Error:** `vite: not found` or `tailwindcss: not found` in js/css containers
@@ -359,6 +400,22 @@ This template includes a flexible theming system that supports:
 ```bash
 docker compose down -v
 docker compose up --build
+```
+
+#### PostgreSQL not ready / connection refused
+
+**Error:** `could not connect to server: Connection refused`
+
+**Solution:** PostgreSQL takes a few seconds to initialize. The entrypoint script waits for it automatically, but if you're running commands manually, wait 10-15 seconds after `docker compose up`, then retry.
+
+#### Database connection warnings
+
+**Warning:** `The "POSTGRES_DB" variable is not set`
+
+**Solution:** This has been fixed in the latest `.env.example`. If you see this with an older version:
+```bash
+# Add to your .env file
+export POSTGRES_DB=starter_django_react
 ```
 
 #### Migration errors on fresh database
@@ -392,7 +449,7 @@ docker compose exec web python manage.py migrate
 # Find what's using port 8000
 lsof -i :8000
 
-# Or change port in .env
+# Kill the process or change port in .env
 export DOCKER_WEB_PORT_FORWARD=8001
 ```
 
@@ -400,11 +457,33 @@ export DOCKER_WEB_PORT_FORWARD=8001
 
 **Error:** Container names already in use
 
-**Solution:** Change `COMPOSE_PROJECT_NAME` in `.env` to something unique:
+**Solution:** This happens when you have multiple copies of the template. Each copy needs a unique `COMPOSE_PROJECT_NAME`. Use the automated setup or rename script:
+```bash
+./bin/setup  # Automated - prompts for rename
+# OR
+./bin/rename-project myproject MyProject  # Manual rename
+```
+
+Or manually edit `.env`:
 ```bash
 export COMPOSE_PROJECT_NAME=mynewproject
 docker compose down
 docker compose up
+```
+
+#### Changes not reflecting in browser
+
+**Frontend not updating:**
+- Vite HMR should auto-reload. If not, check `docker compose logs js`
+- Force refresh: Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows/Linux)
+
+**Backend not updating:**
+- Gunicorn auto-reloads when `WEB_RELOAD=true` in `.env`
+- If disabled, restart: `docker compose restart web`
+
+**Still not working:**
+```bash
+docker compose restart
 ```
 
 For more troubleshooting, see [.claude/CLAUDE.md](./.claude/CLAUDE.md) - "Common Pitfalls & Solutions" section.
@@ -415,24 +494,40 @@ For more troubleshooting, see [.claude/CLAUDE.md](./.claude/CLAUDE.md) - "Common
 
 When creating a new project from this template:
 
-1. **Update the project name:**
-   ```bash
-   # Edit .env and change COMPOSE_PROJECT_NAME
-   export COMPOSE_PROJECT_NAME=mynewproject
+### Option 1: Automated (Recommended)
 
-   # Run the rename script
+Use the setup script which guides you through everything:
+
+```bash
+./bin/setup
+```
+
+This will prompt you to rename the project and handle all setup automatically.
+
+### Option 2: Manual Rename
+
+If you prefer manual control:
+
+1. **Run the rename script:**
+   ```bash
    ./bin/rename-project mynewproject MyNewProject
    ```
 
-2. **Clear old containers:**
-   ```bash
-   docker compose down -v
-   ```
+   This updates:
+   - All code references
+   - `.env` file (`COMPOSE_PROJECT_NAME`, `POSTGRES_DB`, `POSTGRES_USER`)
+   - `.env.example` template
+
+2. **The script will prompt to:**
+   - Clear old containers: `docker compose down -v`
+   - Initialize a new git repository (optional)
 
 3. **Start fresh:**
    ```bash
    docker compose up --build
    ```
+
+**Important:** Each clone of this template MUST have a unique `COMPOSE_PROJECT_NAME` to avoid Docker container conflicts.
 
 ## Documentation
 
