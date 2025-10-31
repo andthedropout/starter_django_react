@@ -68,18 +68,28 @@ class ThemeViewSet(viewsets.ModelViewSet):
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'], url_path='available')
+    def available(self, request):
+        """Check if backend themes are available (lightweight endpoint)"""
+        has_themes = ThemeSetting.get_current_theme() is not None
+        return Response({'available': has_themes})
+
     @action(detail=False, methods=['get'], url_path='current')
     def current(self, request):
-        """Get the current active theme"""
+        """Get the current active theme, or fallback instruction if not configured"""
         current_theme = ThemeSetting.get_current_theme()
         if current_theme:
             serializer = ThemeSerializer(current_theme)
             return Response(serializer.data)
         else:
-            return Response(
-                {'error': 'No current theme configured'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+            # No themes configured - tell frontend to use JSON fallback
+            import os
+            fallback_theme = os.getenv('VITE_FRONTEND_THEME', 'vercel')
+            return Response({
+                'fallback': True,
+                'theme_name': fallback_theme,
+                'message': 'No backend themes configured, use frontend theme JSON'
+            })
 
     @action(detail=False, methods=['get'], url_path='current-setting')
     def current_setting(self, request):

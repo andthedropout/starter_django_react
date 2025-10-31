@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 
 interface AnimatedBackgroundProps {
   type: string; // filename without .svg extension
@@ -6,6 +7,10 @@ interface AnimatedBackgroundProps {
   className?: string;
   children?: React.ReactNode;
   style?: React.CSSProperties;
+  animateBackground?: boolean; // Enable background animation
+  animateContent?: boolean; // Enable content animation with stagger
+  backgroundDelay?: number; // Delay for background animation
+  contentDelay?: number; // Delay for content animation
 }
 
 const AnimatedBackground: React.FC<AnimatedBackgroundProps> = ({
@@ -13,7 +18,11 @@ const AnimatedBackground: React.FC<AnimatedBackgroundProps> = ({
   opacity = 0.6, // Default opacity, will be used from Home.tsx or this default
   className = '',
   children,
-  style
+  style,
+  animateBackground = true, // Background fades in by default
+  animateContent = true, // Content animates in by default
+  backgroundDelay = 0.2, // Background starts AFTER content
+  contentDelay = 0, // Content starts immediately
 }) => {
   const [svgContent, setSvgContent] = useState<string>('');
 
@@ -59,15 +68,23 @@ const AnimatedBackground: React.FC<AnimatedBackgroundProps> = ({
     loadSvgContent();
   }, [type]);
 
+  const BackgroundWrapper = animateBackground ? motion.div : 'div';
+  const ContentWrapper = animateContent ? motion.div : 'div';
+
   return (
     <div className={`relative ${className}`} style={style}>
       {/* Animated SVG Background - Inline for animations to work */}
       {svgContent && (
-        <div
+        <BackgroundWrapper
           className="absolute inset-0 pointer-events-none overflow-hidden"
           style={{
             opacity,
           }}
+          {...(animateBackground && {
+            initial: { opacity: 0 },
+            animate: { opacity },
+            transition: { duration: 0.4, delay: backgroundDelay },
+          })}
         >
           <div
             className="w-full h-full"
@@ -78,13 +95,20 @@ const AnimatedBackground: React.FC<AnimatedBackgroundProps> = ({
               )
             }}
           />
-        </div>
+        </BackgroundWrapper>
       )}
 
       {/* Content */}
-      <div className="relative z-10">
+      <ContentWrapper
+        className="relative z-10"
+        {...(animateContent && {
+          initial: { opacity: 0, y: 20 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.2, delay: contentDelay, ease: 'easeOut' },
+        })}
+      >
         {children}
-      </div>
+      </ContentWrapper>
     </div>
   );
 };

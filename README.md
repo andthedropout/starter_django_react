@@ -16,6 +16,8 @@ A modern full-stack starter template for building web applications with Django, 
 - **React 18.3.1** - UI library
 - **TypeScript** - Type-safe JavaScript
 - **Vite** - Build tool with HMR
+- **Bun** - Fast JavaScript runtime and package manager
+- **TanStack Router 1.95.2** - File-based routing with SSR support
 - **TailwindCSS 3.4** - Utility-first CSS
 - **shadcn/ui** - Component library
 - **Framer Motion** - Animation library
@@ -26,15 +28,54 @@ A modern full-stack starter template for building web applications with Django, 
 
 ## Features
 
-- User authentication (login/signup)
-- Advanced theming system with light/dark mode (43+ pre-built themes)
-- Responsive design components
-- Custom animated SVG backgrounds
-- Hot module replacement in development
-- Docker development environment
-- Environment-based configuration
-- React Scan integration for performance monitoring
-- AI-assisted development ready (Claude Code optimized)
+- **File-based routing** with TanStack Router
+- **Per-route SSR configuration** - Enable/disable server-side rendering per page
+- **User authentication** (login/signup/logout)
+- **Advanced theming system** with light/dark mode (43+ pre-built themes)
+- **Responsive design components** with shadcn/ui
+- **Custom animated SVG backgrounds**
+- **Hot module replacement** in development
+- **Type-safe navigation** with TanStack Router
+- **Docker development environment**
+- **Environment-based configuration**
+- **React Scan integration** for performance monitoring
+- **AI-assisted development ready** (Claude Code optimized)
+
+## Deploy to Production (Railway)
+
+Deploy this template to Railway with one click:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/U4aC91?referralCode=LpschS&utm_medium=integration&utm_source=template&utm_campaign=generic)
+
+### Pre-Deployment Setup
+
+Before deploying, you'll need to set these environment variables in Railway:
+
+**Required Variables:**
+- `DJANGO_SUPERUSER_USERNAME` - Admin username (e.g., "admin")
+- `DJANGO_SUPERUSER_EMAIL` - Admin email (e.g., "admin@example.com")
+- `DJANGO_SUPERUSER_PASSWORD` - Admin password (choose a secure password)
+
+**Optional Variables:**
+- `VITE_USE_BACKEND_THEMES` - Set to "true" to manage themes via Django admin (default: "false")
+- `VITE_FRONTEND_THEME` - Choose theme when using JSON themes (default: "vercel")
+
+All other configuration (database, SECRET_KEY, etc.) is handled automatically by Railway.
+
+### How It Works
+
+1. Click "Deploy on Railway" button
+2. Authorize GitHub access
+3. Set the 3 superuser variables in Railway dashboard
+4. Railway automatically:
+   - Provisions PostgreSQL database
+   - Generates secure SECRET_KEY
+   - Builds frontend (Vite) and backend (Django)
+   - Runs database migrations
+   - Creates your admin account
+   - Deploys your app
+
+Your app will be live at `https://your-app.up.railway.app`
 
 ## Quick Start
 
@@ -55,9 +96,14 @@ A modern full-stack starter template for building web applications with Django, 
    cp .env.example .env
    ```
 
-3. **Build and start containers:**
+3. **Start development environment:**
    ```bash
-   docker compose up --build
+   docker compose up
+   ```
+
+   To run in detached mode (background):
+   ```bash
+   docker compose up -d
    ```
 
 4. **Run migrations (in a new terminal):**
@@ -73,21 +119,29 @@ A modern full-stack starter template for building web applications with Django, 
 6. **Visit the app:**
    Open [http://localhost:8000](http://localhost:8000)
 
+**Note:** To stop services, run `docker compose down`
+
 ## Project Structure
 
 ```
 ├── backend/              # Django backend
-│   ├── config/          # Django settings
-│   ├── users/           # User authentication
-│   └── themes/          # Theming system
+│   ├── config/          # Django settings, URLs, API views
+│   ├── users/           # User authentication app
+│   └── themes/          # Theming system app
 ├── frontend/            # React frontend
 │   ├── src/
-│   │   ├── components/  # React components
+│   │   ├── routes/      # TanStack Router routes (file-based)
+│   │   ├── components/  # React components (UI, layout, etc.)
 │   │   ├── pages/       # Page components
-│   │   ├── hooks/       # Custom hooks
-│   │   └── lib/         # Utilities
+│   │   ├── hooks/       # Custom hooks (useTheme, useAuth, etc.)
+│   │   ├── lib/         # Utilities
+│   │   ├── api/         # API client functions
+│   │   ├── client.tsx   # Client entry point
+│   │   ├── router.tsx   # Router configuration
+│   │   └── ssr.tsx      # SSR entry point
 │   └── package.json
-├── public/              # Static assets
+├── public/              # Static assets (served at /static/)
+├── design-system/       # Themes and design assets
 ├── compose.yaml         # Docker Compose config
 ├── Dockerfile.django    # Django container
 └── .env.example         # Environment template
@@ -99,11 +153,17 @@ A modern full-stack starter template for building web applications with Django, 
 # Start development environment
 docker compose up
 
-# Start in background
+# Start in detached mode (background)
 docker compose up -d
 
-# Stop containers
+# Stop development environment
 docker compose down
+
+# Restart services
+docker compose restart
+
+# View logs
+docker compose logs -f
 
 # Run Django management commands
 docker compose exec web python manage.py <command>
@@ -120,23 +180,24 @@ docker compose exec web python manage.py test
 # Access Django shell
 docker compose exec web python manage.py shell
 
-# View logs
-docker compose logs -f web
-docker compose logs -f js
-
 # Rebuild after dependency changes
 docker compose up --build
 ```
 
 ## Adding UI Components
 
-This project uses [shadcn/ui](https://ui.shadcn.com/). Add components as needed:
+This project uses [shadcn/ui](https://ui.shadcn.com/). Add components inside the Docker container:
 
 ```bash
-cd frontend
-npx shadcn@latest add button
-npx shadcn@latest add card
+# CRITICAL: Must run inside Docker container (not on your host machine)
+docker compose exec js bunx shadcn@latest add button
+docker compose exec js bunx shadcn@latest add card
+
+# Or add npm packages
+docker compose exec js bun add <package-name>
 ```
+
+**Why inside Docker?** Running `bunx` or `bun add` on your host machine installs platform-specific binaries that won't work inside Docker containers. Always use `docker compose exec js` to run package manager commands.
 
 ## Design System
 
@@ -223,6 +284,60 @@ Key variables in `.env`:
 
 See `.env.example` for all available variables.
 
+## Routing & SSR
+
+This template uses **TanStack Router** for file-based routing with per-route SSR configuration.
+
+### Adding Routes
+
+Create a new file in `frontend/src/routes/`:
+
+```tsx
+// frontend/src/routes/my-page.tsx
+import { createFileRoute } from '@tanstack/react-router'
+import MyPage from '@/pages/MyPage'
+
+export const Route = createFileRoute('/my-page')({
+  ssr: true,  // Enable SSR for this route
+  component: MyPage,
+})
+```
+
+### SSR Configuration
+
+**When to enable SSR (`ssr: true`):**
+- Landing pages (SEO important)
+- Marketing pages
+- Blog posts and content pages
+- Any public-facing content
+
+**When to disable SSR (`ssr: false`):**
+- Authentication pages (login/signup)
+- User dashboards
+- Interactive apps
+- Pages that require client-side state
+
+### Navigation
+
+```tsx
+import { Link, useNavigate } from '@tanstack/react-router'
+
+// Using Link component
+<Link to="/my-page">Go to My Page</Link>
+
+// Programmatic navigation
+const navigate = useNavigate()
+navigate({ to: '/my-page' })
+```
+
+**Important:** TanStack Router uses `navigate({ to: '/path' })` - note the object syntax, not just a string.
+
+### Auto-Generated Route Tree
+
+TanStack Router automatically generates `frontend/src/routes/routeTree.gen.ts` based on your route files. **Do not edit this file manually.** It regenerates whenever you add/modify routes.
+
+You may see console warnings about this file being modified - this is normal behavior and can be ignored.
+
 ## Theme System
 
 This template includes a flexible theming system that supports:
@@ -232,41 +347,69 @@ This template includes a flexible theming system that supports:
 - Custom font loading
 - Configurable via `VITE_USE_BACKEND_THEMES` environment variable
 
-## Deploy to Production (Railway)
+## Troubleshooting
 
-Deploy this template to Railway with one click:
+### Common Issues
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template)
+#### Containers fail to start
 
-### Pre-Deployment Setup
+**Error:** `vite: not found` or `tailwindcss: not found` in js/css containers
 
-Before deploying, you'll need to set these environment variables in Railway:
+**Solution:** Node modules volume issue. Fixed in this template with named volume. If you still see this:
+```bash
+docker compose down -v
+docker compose up --build
+```
 
-**Required Variables:**
-- `DJANGO_SUPERUSER_USERNAME` - Admin username (e.g., "admin")
-- `DJANGO_SUPERUSER_EMAIL` - Admin email (e.g., "admin@example.com")
-- `DJANGO_SUPERUSER_PASSWORD` - Admin password (choose a secure password)
+#### Migration errors on fresh database
 
-**Optional Variables:**
-- `VITE_USE_BACKEND_THEMES` - Set to "true" to manage themes via Django admin (default: "false")
-- `VITE_FRONTEND_THEME` - Choose theme when using JSON themes (default: "vercel")
+**Error:** `table "users_subscriptionplan" does not exist`
 
-All other configuration (database, SECRET_KEY, etc.) is handled automatically by Railway.
+**Solution:** This template has clean migrations. If you see this, delete your database volume:
+```bash
+docker compose down -v
+docker compose up --build
+docker compose exec web python manage.py migrate
+```
 
-### How It Works
+#### Static files not loading
 
-1. Click "Deploy on Railway" button
-2. Authorize GitHub access
-3. Set the 3 superuser variables in Railway dashboard
-4. Railway automatically:
-   - Provisions PostgreSQL database
-   - Generates secure SECRET_KEY
-   - Builds frontend (Vite) and backend (Django)
-   - Runs database migrations
-   - Creates your admin account
-   - Deploys your app
+**Error:** Images or fonts showing as broken links
 
-Your app will be live at `https://your-app.up.railway.app`
+**Solution:** Always use `/static/` prefix for files in the `public/` directory:
+```tsx
+// Correct
+<img src="/static/images/logo.png" />
+
+// Wrong
+<img src="/images/logo.png" />
+```
+
+#### Port 8000 already in use
+
+**Solution:** Stop the process using port 8000 or change the port in `.env`:
+```bash
+# Find what's using port 8000
+lsof -i :8000
+
+# Or change port in .env
+export DOCKER_WEB_PORT_FORWARD=8001
+```
+
+#### Container name conflicts
+
+**Error:** Container names already in use
+
+**Solution:** Change `COMPOSE_PROJECT_NAME` in `.env` to something unique:
+```bash
+export COMPOSE_PROJECT_NAME=mynewproject
+docker compose down
+docker compose up
+```
+
+For more troubleshooting, see [.claude/CLAUDE.md](./.claude/CLAUDE.md) - "Common Pitfalls & Solutions" section.
+
+---
 
 ## Using This Template Locally
 

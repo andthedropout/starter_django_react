@@ -8,6 +8,6 @@
     "healthcheckPath": "/up",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
-    "startCommand": "/app/bin/docker-entrypoint-web gunicorn -c python:config.gunicorn config.wsgi"
+    "startCommand": "/app/bin/docker-entrypoint-web supervisord -c /etc/supervisor/conf.d/supervisord.conf"
   }
 }

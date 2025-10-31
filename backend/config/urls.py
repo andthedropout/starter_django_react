@@ -21,6 +21,7 @@ from django.urls import include
 from django.urls import path, re_path
 from django.views.generic import TemplateView
 from django.conf.urls.static import static
+from django.views.static import serve
 from .views import IndexView, list_available_backgrounds, ImageUploadView
 from .api_auth_views import LoginView, LogoutView, AuthStatusView, SignupView, get_csrf_token
 from . import admin as custom_admin  # Import our custom admin configuration
@@ -60,17 +61,31 @@ urlpatterns = [
 
     # Serve React app for home page
     path("", IndexView.as_view(), name="home"),
-    # Catchall for all other routes except admin, api, up, and static - must be last
-    re_path(r'^(?!admin|api|up|static).*$', IndexView.as_view(), name="react_catchall"),
+]
+
+# Serve media files (user uploads) - works in both dev and production
+# CRITICAL: Must come BEFORE React catchall to prevent route conflicts
+urlpatterns += [
+    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
 ]
 
 # In development, let Django serve static files
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
+# React catchall - MUST be last to avoid capturing other routes
+urlpatterns += [
+    re_path(r'^(?!admin|api|up|static|media).*$', IndexView.as_view(), name="react_catchall"),
+]
+
+# Only include debug toolbar URLs if installed (development environment)
 if not settings.TESTING:
-    urlpatterns = [
-        *urlpatterns,
-        path("__debug__/", include("debug_toolbar.urls")),
-    ]
+    try:
+        import debug_toolbar  # noqa: F401
+        urlpatterns = [
+            *urlpatterns,
+            path("__debug__/", include("debug_toolbar.urls")),
+        ]
+    except ImportError:
+        # Debug toolbar not installed (production build)
+        pass

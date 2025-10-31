@@ -15,13 +15,16 @@ public_collected/
 
 # Django/Python - local development only (not needed for Railway)
 /src/
-pyproject.toml
-compose.yaml
 run
 db_full_dump.sql*
 /index.html
 
 # NOTE: public/ is NOT ignored - Railway needs it for backgrounds
+# BUT we DO ignore:
+# - User-uploaded media files
+# - Downloaded fonts (built during Docker build via bin/download-theme-fonts.js)
+/media/
+/public/fonts/
 
 # Python
 __pycache__/
@@ -54,8 +57,12 @@ db.sqlite3
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+bun-debug.log*
+bun-error.log*
 
 # Cache
 .cache/
 .vite/
+.vite-cache/
 assets/node_modules/.vite/
+.tanstack/

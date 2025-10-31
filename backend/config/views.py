@@ -11,8 +11,6 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
 import mimetypes
 
 class IndexView(TemplateView):
@@ -21,22 +19,13 @@ class IndexView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["debug"] = settings.DEBUG
-        
-        # In production, read the manifest to get hashed filenames
+
+        # In production, use hardcoded filenames since Vite is configured without hashes
+        # WhiteNoise handles cache busting via STATICFILES_STORAGE with hashed URLs
         if not settings.DEBUG:
-            manifest_path = os.path.join(settings.STATIC_ROOT, "manifest.json")
-            if os.path.exists(manifest_path):
-                with open(manifest_path, "r") as f:
-                    manifest = json.load(f)
-                    # The manifest uses "index.html" entry point which outputs to "index.js"
-                    context["main_js"] = manifest.get("index.html", {}).get("file", "index.js")
-                    # CSS is nested differently
-                    context["main_css"] = "index.css"
-            else:
-                # Fallback if manifest doesn't exist
-                context["main_js"] = "index.js"
-                context["main_css"] = "index.css"
-        
+            context["main_js"] = "index.js"
+            context["main_css"] = "index.css"
+
         return context 
 
 def list_available_backgrounds(request):

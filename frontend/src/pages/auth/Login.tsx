@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getCookie } from '@/lib/getCookie';
 import { useAuth } from '@/hooks/useAuth';
+import PageWrapper from '@/components/layout/PageWrapper';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -32,7 +33,6 @@ const Login: React.FC = () => {
             
         if (response.ok) {
           const csrfToken = getCookie('csrftoken');
-          console.log("CSRF token after fetch:", csrfToken);
         } else {
           console.error('Failed to fetch CSRF token:', response.status);
         }
@@ -144,9 +144,8 @@ const Login: React.FC = () => {
       const data = await response.json();
       
       if (data.success) {
-        console.log('Login successful:', data.user);
         updateUser(data.user);
-        navigate('/');
+        navigate({ to: '/' });
       } else {
         setLoginError(data.error || 'Login failed. Please try again.');
       }
@@ -159,8 +158,9 @@ const Login: React.FC = () => {
   };
 
   return (
-    <section className="h-[calc(100vh-24rem)] min-h-[440px] bg-muted/30 flex items-center justify-center py-2">
-        <div className="flex w-full max-w-sm flex-col items-center gap-y-8 rounded-md border border-border bg-card px-6 py-12 shadow-md">
+    <PageWrapper className="flex items-center justify-center">
+      <section className="w-full min-h-[calc(100vh-4rem)] flex items-center justify-center py-12">
+          <div className="flex w-full max-w-sm flex-col items-center gap-y-8 rounded-md border border-border bg-card px-6 py-12 shadow-md">
           <div className="flex flex-col items-center gap-y-2">
             {/* Logo */}
             <div className="flex items-center gap-1 lg:justify-start">
@@ -241,7 +241,7 @@ const Login: React.FC = () => {
           <div className="flex justify-center gap-1 text-sm text-muted-foreground">
             <p>Don't have an account?</p>
             <Link
-              to="/register"
+              to="/signup"
               className="font-medium text-primary hover:underline"
             >
               Sign up
@@ -249,6 +249,7 @@ const Login: React.FC = () => {
         </div>
       </div>
     </section>
+    </PageWrapper>
   );
 };
 

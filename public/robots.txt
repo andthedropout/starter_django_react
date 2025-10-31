@@ -1,4 +1,8 @@
-# TODO: This will block all robots from crawling your site. You probably don't
-# want this set in production, but could be useful for a test / staging server.
+# Allow all robots to crawl the site
+# Customize this based on your needs
 User-agent: *
-Disallow: /
+Allow: /
+
+# Disallow specific paths if needed
+# Disallow: /admin/
+# Disallow: /api/

@@ -12,4 +12,11 @@ python manage.py migrate --noinput
 echo "Creating default superuser..."
 python manage.py create_default_superuser
 
+# If supervisord is being started, ensure we're root and run it directly
+if [[ "$1" == "supervisord" ]]; then
+    echo "Starting supervisord (nginx + django + bun-ssr)..."
+    exec "$@"
+fi
+
+# Otherwise run the command as usual
 exec "$@"

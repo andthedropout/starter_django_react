@@ -45,13 +45,11 @@ const preloadFont = (fontName: string): Promise<void> => {
 
   preloadedFonts.add(normalizedName);
 
-  // Try fontsource first, fallback to Google Fonts
+  // Try Google Fonts first (has all weights), fallback to Fontsource
   // Fire and forget - don't block rendering
-  const promise = loadFontWithSwap(fontName, false).catch(() => {
-    console.log(`Fontsource failed for ${fontName}, trying Google Fonts...`);
-    return loadFontWithSwap(fontName, true);
+  const promise = loadFontWithSwap(fontName, true).catch(() => {
+    return loadFontWithSwap(fontName, false);
   }).catch(() => {
-    console.warn(`Both font sources failed for ${fontName}, using fallback`);
   });
 
   fontLoadingPromises.set(normalizedName, promise);
@@ -79,9 +77,19 @@ const loadFontWithSwap = (fontName: string, useGoogleFonts = false): Promise<voi
       const link = document.createElement('link');
       link.rel = 'stylesheet';
 
+      // Check for locally downloaded fonts first (from build-time download script)
+      const localFontPath = `/static/fonts/${normalizedName}/font.css`;
+
+      // Try local font first, fallback to CDN
       if (useGoogleFonts) {
-        link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}:wght@400;500;600;700&display=swap`;
-        link.setAttribute('data-font-loader', 'google-fonts');
+        link.href = localFontPath;
+        link.setAttribute('data-font-loader', 'local');
+
+        // Fallback to Google Fonts CDN if local font fails to load
+        link.onerror = () => {
+          link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}:wght@400;500;600;700;800;900&display=swap`;
+          link.setAttribute('data-font-loader', 'google-fonts');
+        };
       } else {
         link.href = `https://cdn.jsdelivr.net/npm/@fontsource/${normalizedName}@latest/index.css`;
         link.setAttribute('data-font-loader', 'fontsource');
@@ -108,7 +116,6 @@ const loadFontWithSwap = (fontName: string, useGoogleFonts = false): Promise<voi
       };
 
       link.onerror = () => {
-        console.warn(`Failed to load font: ${fontName}`);
         reject(new Error(`Failed to load font: ${fontName}`));
       };
 
@@ -152,7 +159,6 @@ export const initializeFontPreloading = async (fontVariables: Record<string, str
   // Fire and forget - start loading fonts but don't wait
   fontsToPreload.forEach((font) => {
     preloadFont(font).catch((error) => {
-      console.warn(`⚠️ Font failed to preload: ${font}`, error);
     });
   });
 

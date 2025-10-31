@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getCookie } from '@/lib/getCookie';
+import PageWrapper from '@/components/layout/PageWrapper';
 
 const SignUp: React.FC = () => {
   const navigate = useNavigate();
@@ -37,7 +38,6 @@ const SignUp: React.FC = () => {
             
         if (response.ok) {
           const csrfToken = getCookie('csrftoken');
-          console.log("CSRF token after fetch:", csrfToken);
         } else {
           console.error('Failed to fetch CSRF token:', response.status);
         }
@@ -156,7 +156,6 @@ const SignUp: React.FC = () => {
       const data = await response.json();
       
       if (data.success) {
-        console.log('Signup successful:', data.user);
         setSignupSuccess(true);
       } else {
         setSignupError(data.error || 'Signup failed. Please try again.');
@@ -171,8 +170,9 @@ const SignUp: React.FC = () => {
 
   if (signupSuccess) {
     return (
-      <section className="h-[calc(100vh-24rem)] min-h-[390px] bg-muted/30 flex items-center justify-center py-2">
-          <div className="flex w-full max-w-sm flex-col items-center gap-y-8 rounded-md border border-border bg-card px-6 py-12 shadow-md">
+      <PageWrapper>
+        <section className="h-[calc(100vh-24rem)] min-h-[390px] bg-muted/30 flex items-center justify-center py-2">
+            <div className="flex w-full max-w-sm flex-col items-center gap-y-8 rounded-md border border-border bg-card px-6 py-12 shadow-md">
             <div className="text-green-500 text-5xl">✓</div>
             <div className="text-center">
               <h2 className="text-2xl font-bold text-foreground mb-4">Account Created Successfully!</h2>
@@ -180,7 +180,7 @@ const SignUp: React.FC = () => {
                 Welcome! Your account has been created and you've been automatically logged in.
               </p>
               <Button 
-                onClick={() => navigate('/')}
+                onClick={() => navigate({ to: '/' })}
                 className="w-full"
               >
                 Go to Dashboard
@@ -188,12 +188,14 @@ const SignUp: React.FC = () => {
           </div>
         </div>
       </section>
+      </PageWrapper>
     );
   }
 
   return (
-    <section className="h-[calc(100vh-24rem)] min-h-[540px] bg-muted/30 flex items-center justify-center py-2">
-        <div className="flex w-full max-w-sm flex-col items-center gap-y-8 rounded-md border border-border bg-card px-6 py-12 shadow-md">
+    <PageWrapper className="flex items-center justify-center">
+      <section className="w-full min-h-[calc(100vh-4rem)] flex items-center justify-center py-12">
+          <div className="flex w-full max-w-sm flex-col items-center gap-y-8 rounded-md border border-border bg-card px-6 py-12 shadow-md">
           <div className="flex flex-col items-center gap-y-2">
             {/* Logo */}
             <div className="flex items-center gap-1 lg:justify-start">
@@ -316,6 +318,7 @@ const SignUp: React.FC = () => {
         </div>
       </div>
     </section>
+    </PageWrapper>
   );
 };
 

@@ -1,4 +1,4 @@
-FROM node:20.6.1-bookworm-slim AS frontend
+FROM oven/bun:1.1-slim AS frontend
 LABEL maintainer="Tam Le <tamsgit@gmail.com>"
 # [original] LABEL maintainer="Nick Janetakis <nick.janetakis@gmail.com>"
 
@@ -11,37 +11,96 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential \
   && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man \
   && apt-get clean \
-  && groupmod -g "${GID}" node && usermod -u "${UID}" -g "${GID}" node \
-  && mkdir -p /node_modules && chown node:node -R /node_modules /app
+  && groupadd -g "${GID}" bun || true \
+  && useradd -u "${UID}" -g "${GID}" -m bun || true \
+  && mkdir -p /node_modules && chown -R "${UID}:${GID}" /node_modules /app
 
-USER node
+USER bun
 
-COPY --chown=node:node frontend/package.json frontend/*yarn* ./
+COPY --chown=bun:bun frontend/package.json frontend/bun.lockb* ./
 
-RUN yarn install && yarn cache clean
+RUN bun install --frozen-lockfile
 
 ARG NODE_ENV="production"
 ARG VITE_USE_BACKEND_THEMES="false"
 ARG VITE_FRONTEND_THEME="vercel"
 
 ENV PATH="${PATH}:/node_modules/.bin" \
-    USER="node" \
+    USER="bun" \
     VITE_USE_BACKEND_THEMES="${VITE_USE_BACKEND_THEMES}" \
     VITE_FRONTEND_THEME="${VITE_FRONTEND_THEME}"
 
-COPY --chown=node:node . ..
+COPY --chown=bun:bun . ..
 
-# Ensure we build with the production flag
-RUN yarn run vite build --outDir=/app/frontend/dist --emptyOutDir
+# Download fonts for VITE_FRONTEND_THEME (used as fallback in both modes)
+# NOTE: Even when using backend themes, we download fonts for the fallback theme
+# in case backend API is unavailable (e.g., fresh deployment with no themes yet)
+RUN rm -rf /app/public/fonts/* && \
+    bun /app/bin/download-theme-fonts.js && \
+    echo "Downloaded fonts for fallback theme: $VITE_FRONTEND_THEME"
+
+# Build TanStack Start for production (creates dist/client + dist/server)
+# Set NODE_ENV=production to disable file watching during build
+RUN NODE_ENV=production bun run build
+
+# Verify the build output exists
+RUN ls -la /app/frontend/dist/ && \
+    ls -la /app/frontend/dist/client/ && \
+    ls -la /app/frontend/dist/server/ && \
+    test -f /app/frontend/dist/server.js && \
+    echo "✅ TanStack Start build successful"
 
 # Fix to copy the built assets to a shared location
 RUN cp -r /app/frontend/dist/* /app/public_collected/ || mkdir -p /app/public_collected/ && cp -r /app/frontend/dist/* /app/public_collected/
 
-CMD ["bash"]
+CMD ["sh"]
 
 ###############################################################################
 
-FROM python:3.13.0-slim-bookworm AS app
+FROM oven/bun:1.1-slim AS frontend-dev
+LABEL maintainer="Tam Le <tamsgit@gmail.com>"
+
+WORKDIR /app/frontend
+
+ARG UID=1000
+ARG GID=1000
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends build-essential \
+  && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man \
+  && apt-get clean \
+  && groupadd -g "${GID}" bun || true \
+  && useradd -u "${UID}" -g "${GID}" -m bun || true \
+  && mkdir -p /node_modules && chown -R "${UID}:${GID}" /node_modules /app
+
+USER bun
+
+COPY --chown=bun:bun frontend/package.json frontend/bun.lockb* ./
+
+RUN bun install --frozen-lockfile
+
+ARG NODE_ENV="development"
+ARG VITE_USE_BACKEND_THEMES="false"
+ARG VITE_FRONTEND_THEME="vercel"
+
+ENV PATH="${PATH}:/node_modules/.bin" \
+    USER="bun" \
+    VITE_USE_BACKEND_THEMES="${VITE_USE_BACKEND_THEMES}" \
+    VITE_FRONTEND_THEME="${VITE_FRONTEND_THEME}"
+
+COPY --chown=bun:bun . ..
+
+# Download fonts for VITE_FRONTEND_THEME (used as fallback in both modes)
+RUN rm -rf /app/public/fonts/* && \
+    bun /app/bin/download-theme-fonts.js && \
+    echo "Downloaded fonts for fallback theme: $VITE_FRONTEND_THEME"
+
+# Skip build for dev - just run bun dev
+CMD ["bun", "dev"]
+
+###############################################################################
+
+FROM python:3.12-slim-bookworm AS app
 LABEL maintainer="Tam Le <tamsgit@gmail.com>"
 # [original] LABEL maintainer="Nick Janetakis <nick.janetakis@gmail.com>"
 
@@ -51,26 +110,35 @@ ARG UID=1000
 ARG GID=1000
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential curl libpq-dev \
+  && apt-get install -y --no-install-recommends build-essential curl libpq-dev nginx supervisor unzip \
   && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man \
   && apt-get clean \
   && groupadd -g "${GID}" python \
   && useradd --create-home --no-log-init -u "${UID}" -g "${GID}" python \
-  && mkdir -p /public_collected public \
+  && mkdir -p /public_collected public /var/log/supervisor \
   && chown python:python -R /public_collected /app
 
-USER python
+# Install Bun for SSR server
+RUN curl -fsSL https://bun.sh/install | bash \
+  && ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
-COPY --chown=python:python requirements*.txt ./
-COPY --chown=python:python bin/ ./bin
+COPY requirements*.txt ./
+COPY bin/ ./bin
 
+# CRITICAL: Install Python packages as ROOT for system-wide installation
+# This allows the app to run as root (RAILWAY_RUN_UID=0) for volume write permissions
+# User-local installs (--user flag) would break when running as root
+USER root
 RUN chmod 0755 bin/* && bin/pip3-install
+
+# Switch back to python user for normal operations
+USER python
 
 ARG DEBUG="false"
 ENV DEBUG="${DEBUG}" \
     PYTHONUNBUFFERED="true" \
     PYTHONPATH="." \
-    PATH="${PATH}:/home/python/.local/bin" \
+    PATH="${PATH}:/usr/local/bin" \
     USER="python"
 
 # COPY main app code
@@ -88,11 +156,37 @@ COPY --chown=python:python --from=frontend /app/frontend/dist/ /app/public_colle
 RUN mkdir -p /app/public_collected/images/backgrounds/
 COPY --chown=python:python --from=frontend /app/public/images/backgrounds/ /app/public_collected/images/backgrounds/
 
-# Create uploads directory in public_collected
-RUN mkdir -p /app/public_collected/uploads/
+# Copy theme JSON files to public_collected/themes
+RUN mkdir -p /app/public_collected/themes/
+COPY --chown=python:python --from=frontend /app/design-system/themes/ /app/public_collected/themes/
+
+# Copy downloaded fonts from frontend stage to public_collected
+COPY --chown=python:python --from=frontend /app/public/fonts/ /app/public_collected/fonts/
+
+# Copy TanStack Start SSR build (dist/client and dist/server)
+COPY --chown=python:python --from=frontend /app/frontend/dist/ /app/frontend/dist/
+
+# Copy server.ts to frontend directory (needed for Bun to run)
+COPY --chown=python:python --from=frontend /app/frontend/server.ts /app/frontend/server.ts
+
+# Copy node_modules for SSR runtime dependencies (h3-v2, etc.)
+COPY --chown=python:python --from=frontend /app/frontend/node_modules/ /app/frontend/node_modules/
+
+# Copy nginx and supervisor configs
+COPY --chown=root:root nginx.conf /etc/nginx/nginx.conf
+COPY --chown=root:root supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create media directory for user uploads (MEDIA_ROOT)
+# CRITICAL: Railway volumes mount at /mnt/media (requires RAILWAY_RUN_UID=0)
+# Local dev bind mounts ./media to /mnt/media in compose.yaml
+USER root
+RUN mkdir -p /mnt/media && chown -R python:python /mnt/media
+
+# Stay as root for supervisord (it needs to manage nginx)
+# Supervisord will switch to appropriate users for each service
 
 ENTRYPOINT ["/app/bin/docker-entrypoint-web"]
 
 EXPOSE 8000
 
-CMD ["gunicorn", "-c", "python:config.gunicorn", "config.wsgi"]
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

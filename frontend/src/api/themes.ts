@@ -71,6 +71,11 @@ class ThemeApiService {
     return this.makeRequest('/themes/');
   }
 
+  // Check if backend themes are available
+  async areThemesAvailable(): Promise<{ available: boolean }> {
+    return this.makeRequest('/themes/available/');
+  }
+
   // Get current active theme with full CSS variables
   async getCurrentTheme(): Promise<ThemeApiResponse> {
     return this.makeRequest('/themes/current/');

@@ -1,0 +1,73 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+*.pyc
+*.pyo
+*.pyd
+
+# Node
+**/node_modules/
+frontend/node_modules/
+node_modules/
+frontend/dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+bun-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Development
+*.md
+README.md
+docs/
+.claude/
+
+# Media/uploads (don't copy to build context)
+media/
+public_collected/
+
+# Testing
+.coverage
+.pytest_cache
+htmlcov
+
+# Misc
+*.bak
+*.tmp
+*.temp
