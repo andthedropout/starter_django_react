@@ -153,7 +153,11 @@ WSGI_APPLICATION = "config.wsgi.application"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 DATABASES = {
     "default": dj_database_url.config(
-        conn_max_age=600, # Optional: set connection max age
+        # Serverless-friendly: 60s allows connection reuse while permitting sleep after 10min idle
+        # Set to 0 for maximum serverless compatibility (creates new connection per request)
+        conn_max_age=int(os.getenv("CONN_MAX_AGE", "60")),
+        # Health checks validate connections before reuse - prevents stale connection errors after wake-up
+        conn_health_checks=True,
         default=os.getenv("DATABASE_URL", f"postgres://{os.getenv('POSTGRES_USER', 'starter_django_react')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@{os.getenv('POSTGRES_HOST', 'postgres')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('POSTGRES_DB', 'starter_django_react')}") # noqa E501
     )
 }

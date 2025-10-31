@@ -15,7 +15,9 @@ VITE_FRONTEND_THEME = "vercel"
 [deploy]
 # startCommand removed - using Dockerfile CMD instead
 healthcheckPath = "/up"
-healthcheckTimeout = 100
+# Serverless-friendly: 180s allows time for PostgreSQL cold boot (15s) + migrations (30s) + app start (10s)
+# Prevents 404 errors when both app and database are waking from sleep
+healthcheckTimeout = 180
 restartPolicyType = "ON_FAILURE"
 
 # CRITICAL: Volume for persistent media file uploads
