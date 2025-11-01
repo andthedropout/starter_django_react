@@ -1,6 +1,6 @@
 # Django + React Starter Template
 
-A modern full-stack starter template for building web applications with Django, React, and TypeScript.
+A modern full-stack starter template for building web applications with Django, React, and TypeScript. Test PR preview deployment.
 
 ## Tech Stack
 
