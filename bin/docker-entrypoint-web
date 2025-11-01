@@ -31,11 +31,16 @@ else
     done
 fi
 
-# Create default superuser only on actual deployments (not on wake-ups)
-# Check for Railway deployment ID and first-run marker
+# Create default superuser only on actual deployments (not on wake-ups or PR previews)
+# Check for Railway deployment ID, first-run marker, and skip PR environments
 if [ -n "$RAILWAY_DEPLOYMENT_ID" ] && [ ! -f /tmp/.superuser_created ]; then
-    echo "Creating default superuser..."
-    python manage.py create_default_superuser && touch /tmp/.superuser_created || true
+    # Skip superuser creation in PR preview environments
+    if [[ "$RAILWAY_ENVIRONMENT_NAME" =~ ^pr- ]]; then
+        echo "Skipping superuser creation (PR preview environment)"
+    else
+        echo "Creating default superuser..."
+        python manage.py create_default_superuser && touch /tmp/.superuser_created || true
+    fi
 else
     echo "Skipping superuser creation (already exists or not a deployment)"
 fi

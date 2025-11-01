@@ -25,3 +25,19 @@ restartPolicyType = "ON_FAILURE"
 # MUST set RAILWAY_RUN_UID=0 in environment variables for write permissions
 [[deploy.volumes]]
 mountPath = "/mnt/media"
+
+# PR Preview Environments
+# Automatically creates isolated preview deployments for each pull request
+# Each PR gets its own PostgreSQL database and Django instance
+[environments.pr]
+[environments.pr.build.buildArgs]
+NODE_ENV = "production"
+VITE_USE_BACKEND_THEMES = "false"
+VITE_FRONTEND_THEME = "cyberpunk"  # Visual distinction from production
+
+[environments.pr.deploy]
+healthcheckPath = "/up"
+# Faster feedback for PR testing (vs 180s in production)
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+# No media volume for PR environments (cost optimization)

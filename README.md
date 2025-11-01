@@ -77,6 +77,33 @@ All other configuration (database, SECRET_KEY, etc.) is handled automatically by
 
 Your app will be live at `https://your-app.up.railway.app`
 
+### PR Preview Environments
+
+Railway automatically creates **isolated preview environments** for every pull request:
+
+**How It Works:**
+1. Open a PR against your `main` branch on GitHub
+2. Railway automatically detects the PR and creates:
+   - Isolated PostgreSQL database (fresh instance)
+   - Separate Django + React deployment (running your PR code)
+   - Unique URL: `https://your-app-pr-123.up.railway.app`
+3. Test your changes in the isolated environment
+4. When you merge/close the PR, Railway automatically deletes everything
+
+**Features:**
+- **Complete isolation** - Each PR has its own database, backend, and frontend
+- **Visual distinction** - PR previews use the "cyberpunk" theme so you can tell them apart from production
+- **Automatic cleanup** - No manual teardown needed
+- **Cost-optimized** - No media volumes in PR environments, faster health checks (120s vs 180s)
+
+**Costs:**
+- ~$1-2/day per active PR (serverless PostgreSQL + web service)
+- Only charged when PR environment is actively used
+- Automatically destroyed when PR closes
+
+**Configuration:**
+PR preview behavior is controlled in `railway.toml` under the `[environments.pr]` section. The template is pre-configured and ready to use.
+
 ## Quick Start
 
 ### Prerequisites
