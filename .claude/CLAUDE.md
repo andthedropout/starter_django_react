@@ -132,16 +132,37 @@
 
 **File-Based Routing**: Routes are defined in `frontend/src/routes/` directory.
 
-**Route Configuration Pattern**:
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import MyPage from '@/pages/MyPage'
+**CRITICAL: Route Generation Workflow**
 
-export const Route = createFileRoute('/my-path')({
-  ssr: true,  // Enable SSR for this route
-  component: MyPage,
-})
-```
+To prevent infinite file watching loops in Docker, route generation happens on the **host machine only**:
+
+1. **Create route file** in `frontend/src/routes/`:
+   ```tsx
+   import { createFileRoute } from '@tanstack/react-router'
+   import MyPage from '@/pages/MyPage'
+
+   export const Route = createFileRoute('/my-path')({
+     ssr: true,  // Enable SSR for this route
+     component: MyPage,
+   })
+   ```
+
+2. **Generate route tree** (run on host, NOT in Docker):
+   ```bash
+   cd frontend
+   npx @tanstack/router-cli generate
+   ```
+
+3. **Commit the generated file**:
+   - `frontend/src/routeTree.gen.ts` is committed to git
+   - Docker containers use this pre-generated file
+   - Production builds use this pre-generated file
+
+**Why this approach:**
+- Docker has `DISABLE_ROUTE_GEN=true` environment variable
+- This disables TanStack Router's file watcher in containers
+- Prevents infinite loop crashes in Docker
+- Route tree is version-controlled and stable
 
 **Per-Route SSR Control**:
 - Set `ssr: true` for SEO-critical pages (landing pages, content pages)

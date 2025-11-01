@@ -52,13 +52,17 @@ export default defineConfig(({ mode }) => ({
   },
 
   plugins: [
-    tanstackStart({
-      router: {
-        autoCodeSplitting: true,
-        generatedRouteTree: 'routeTree.gen.ts',
-      },
-      enableRouteGeneration: mode !== 'production',  // Disable route generation during production builds
-    }),  // MUST come before react()
+    // Conditionally disable TanStack Start plugin in Docker to prevent infinite file watching loops
+    // When DISABLE_ROUTE_GEN=true, route generation happens on host machine only
+    ...(process.env.DISABLE_ROUTE_GEN === 'true' ? [] : [
+      tanstackStart({
+        router: {
+          autoCodeSplitting: true,
+          generatedRouteTree: 'routeTree.gen.ts',
+        },
+        enableRouteGeneration: mode !== 'production',  // Disable route generation during production builds
+      }),
+    ]),  // MUST come before react()
     react(),
     {
       name: 'no-cache',

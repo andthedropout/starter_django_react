@@ -348,7 +348,9 @@ This template uses **TanStack Router** for file-based routing with per-route SSR
 
 ### Adding Routes
 
-Create a new file in `frontend/src/routes/`:
+**Important:** Route generation happens on your **host machine**, not inside Docker containers. This prevents infinite file watching loops.
+
+1. **Create a new file** in `frontend/src/routes/`:
 
 ```tsx
 // frontend/src/routes/my-page.tsx
@@ -360,6 +362,15 @@ export const Route = createFileRoute('/my-page')({
   component: MyPage,
 })
 ```
+
+2. **Generate the route tree** (run on your host machine, NOT in Docker):
+
+```bash
+cd frontend
+npx @tanstack/router-cli generate
+```
+
+This updates `frontend/src/routeTree.gen.ts` which is committed to git and used by Docker containers.
 
 ### SSR Configuration
 
