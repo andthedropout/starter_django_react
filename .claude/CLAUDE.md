@@ -403,6 +403,110 @@ Use `docker compose exec` directly.
 
 ---
 
+## PR Preview Deployment Workflow
+
+### ⚠️ CRITICAL: Default Deployment Strategy
+
+**This is how we deploy ALL code changes to production.** Do not push directly to main.
+
+### When to Create a New Branch
+
+**EVERY new feature, fix, or change gets its OWN new branch from main.**
+
+Examples:
+- Updating documentation → NEW branch: `feature/update-docs`
+- Fixing a bug → NEW branch: `fix/bug-description`
+- Adding a component → NEW branch: `feature/add-component`
+- Refactoring code → NEW branch: `refactor/description`
+
+**NEVER reuse test branches or old PR branches.** Each change is a new branch.
+
+### Standard Workflow
+
+When implementing any feature or fix that should go to production:
+
+1. **Start fresh from main**:
+   ```bash
+   git checkout main
+   git pull
+   ```
+
+2. **Create NEW feature branch** (descriptive name):
+   ```bash
+   git checkout -b feature/descriptive-name
+   # OR
+   git checkout -b fix/bug-description
+   ```
+
+3. **Make changes and commit**:
+   ```bash
+   git add <files>
+   git commit -m "Clear description of changes"
+   ```
+
+4. **Push branch and create PR**:
+   ```bash
+   git push -u origin feature/descriptive-name
+   gh pr create --title "Feature: Description" --body "Details of what changed and why"
+   ```
+
+5. **Wait for Railway PR preview deployment** (~2-3 minutes):
+   - Railway automatically detects the PR
+   - Creates isolated preview environment (separate database + backend + frontend)
+   - Posts deployment URL as PR comment
+
+6. **Fetch and present preview URL to user**:
+   ```bash
+   gh pr view <pr-number> --comments
+   ```
+   Extract Railway preview URL from comments and present to user:
+   "Preview deployed at: https://starter-django-react-pr-X.up.railway.app"
+
+7. **Wait for user approval**:
+   - User will test the preview deployment
+   - User will respond with approval (e.g., "approved", "looks good", "merge it", "ship it")
+   - DO NOT merge without explicit approval
+
+8. **On approval, merge PR**:
+   ```bash
+   gh pr merge <pr-number> --squash --delete-branch
+   ```
+   - Uses squash merge for clean history
+   - Automatically deletes branch after merge
+
+### Safety Rules - READ CAREFULLY
+
+**NEVER do these without explicit confirmation:**
+- Push directly to main (even if user asks - confirm first: "Are you sure you want me to push directly to main instead of creating a PR?")
+- Merge a PR without user approval
+- Force push (`git push --force`)
+- Delete main/master branch
+- Rebase or amend commits on shared branches
+- Run any destructive git operations
+- Reuse old test branches or PR branches for new features
+
+**If preview deployment fails:**
+- Report failure to user immediately
+- Show error logs from Railway or GitHub checks
+- Debug together - do NOT attempt to fix and re-deploy without discussion
+
+### Why This Workflow
+
+**Benefits:**
+- Every change is tested in production-like environment before merging
+- User sees actual UI/UX changes, not just code diffs
+- Isolated database prevents breaking production data
+- Clean git history with squash merges
+- Automatic cleanup of branches and Railway environments
+
+**Railway PR Previews:**
+- Each PR gets isolated PostgreSQL database
+- Cyberpunk theme for visual distinction from production
+- Automatic creation and teardown
+- Cost: ~$1-2/day per active PR (only when in use)
+
+---
+
 ## Template Usage
 
 ### Creating New Project
