@@ -114,6 +114,7 @@ services:
     environment:
       - DJANGO_API_URL=http://web:8000
       - VITE_PORT=5173
+      - DISABLE_ROUTE_GEN=true  # Disable TanStack Router file watching in Docker (prevents infinite loops)
 
   # NOTE: css service removed - Vite handles all CSS including Tailwind
   # The separate Tailwind watcher (dev:css) was looking for a non-existent css/app.css file
