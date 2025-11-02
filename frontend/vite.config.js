@@ -12,6 +12,29 @@ export default defineConfig(({ mode }) => ({
   build: {
     // Disable file watching during production builds to prevent infinite loops
     watch: null,
+    // Enable aggressive minification for production
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,  // Remove console.logs in production
+        drop_debugger: true,
+        passes: 2,  // Run compression twice for better results
+      },
+      mangle: {
+        safari10: true,  // Fix Safari 10+ issues
+      },
+    },
+    cssMinify: true,
+    // Code splitting for better caching and smaller initial bundle
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'router': ['@tanstack/react-router', '@tanstack/react-start'],
+          'ui': ['@radix-ui/react-slot', 'class-variance-authority', 'clsx', 'tailwind-merge'],
+        },
+      },
+    },
   },
 
   server: {

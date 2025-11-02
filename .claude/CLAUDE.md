@@ -829,11 +829,22 @@ docker compose up --build
 - Frontend: Group by feature, not by type
 
 ### Performance
+
+#### Build Optimization (Production)
+- **Vite config includes aggressive minification** - Terser with 2-pass compression, console.log removal
+- **Code splitting enabled** - React, Router, and UI libraries separated into chunks for better caching
+- **CSS minification** - Enabled by default for smaller stylesheets
+- **DO NOT use `@import` for external fonts** - Causes render-blocking (1,500ms+ delay)
+  - ✅ Good: Self-hosted fonts with `@font-face` (what template uses)
+  - ❌ Bad: `@import url('https://fonts.googleapis.com/...')` in CSS
+
+#### Runtime Optimization
 - Enable SSR for SEO-critical pages (landing, content)
 - Use client-only rendering for interactive dashboards and auth pages
 - Optimize images (WebP preferred)
 - Use database indexes for frequent queries
 - Enable Redis caching for API responses
+- Lazy-load heavy components (use `lazyRouteComponent()` for pages with large dependencies)
 
 ### Security
 - Never commit `.env`
