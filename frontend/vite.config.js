@@ -28,10 +28,20 @@ export default defineConfig(({ mode }) => ({
     // Code splitting for better caching and smaller initial bundle
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'router': ['@tanstack/react-router', '@tanstack/react-start'],
-          'ui': ['@radix-ui/react-slot', 'class-variance-authority', 'clsx', 'tailwind-merge'],
+        manualChunks(id) {
+          // Only apply manual chunking to client build (SSR externalizes these modules)
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor';
+            }
+            if (id.includes('@tanstack/react-router') || id.includes('@tanstack/react-start')) {
+              return 'router';
+            }
+            if (id.includes('@radix-ui') || id.includes('class-variance-authority') ||
+                id.includes('clsx') || id.includes('tailwind-merge')) {
+              return 'ui';
+            }
+          }
         },
       },
     },
