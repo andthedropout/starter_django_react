@@ -24,48 +24,95 @@ else
     echo ""
 fi
 
-# Step 2: Prompt for project rename (optional)
+# Step 2: Project Configuration
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Project Naming"
+echo "Project Configuration"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "IMPORTANT: Each clone of this template needs a unique project name"
-echo "to avoid Docker container conflicts."
+echo "IMPORTANT: Each clone of this template needs:"
+echo "  • Unique project name (avoids Docker conflicts)"
+echo "  • Unique port (if running multiple projects simultaneously)"
 echo ""
-echo "Current project name: starter_django_react"
+echo "Current settings:"
+echo "  • Project name: starter_django_react"
+echo "  • Port: 8000"
 echo ""
 
+# Check if port 8000 is already in use
+PORT_IN_USE=false
+if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    PORT_IN_USE=true
+    echo "⚠️  WARNING: Port 8000 is already in use!"
+    echo ""
+fi
+
+# Ask for project name
+PROJECT_NAME=""
 while true; do
-    read -p "Do you want to rename this project now? (y/n): " -r yn
-    case "${yn}" in
-        [Yy]* )
-            echo ""
-            read -p "Enter app name (lowercase, e.g., myapp): " APP_NAME
-            read -p "Enter module name (PascalCase, e.g., MyApp): " MODULE_NAME
+    read -p "Enter project name [starter_django_react]: " -r input
+    PROJECT_NAME="${input:-starter_django_react}"
 
-            if [ -z "${APP_NAME}" ] || [ -z "${MODULE_NAME}" ]; then
-                echo "❌ Both names are required"
-                continue
-            fi
+    # Validate project name
+    if [[ ! "${PROJECT_NAME}" =~ ^[a-z][a-z0-9_]*$ ]]; then
+        echo "❌ Invalid name. Use lowercase letters, numbers, underscores only (must start with letter)"
+        continue
+    fi
 
-            echo ""
-            echo "🔄 Renaming project to ${APP_NAME}..."
-            ./bin/rename-project "${APP_NAME}" "${MODULE_NAME}"
-            echo ""
-            break
-            ;;
-        [Nn]* )
-            echo ""
-            echo "⚠️  Skipping rename. You can rename later by running: ./bin/rename-project"
-            echo "   Note: If you're running multiple copies, change COMPOSE_PROJECT_NAME in .env manually"
-            echo ""
-            break
-            ;;
-        * )
-            echo "Please answer y or n"
-            ;;
-    esac
+    break
 done
+
+# Ask for port
+PORT=""
+while true; do
+    if [ "$PORT_IN_USE" = true ]; then
+        read -p "Enter port to run on [8001]: " -r input
+        PORT="${input:-8001}"
+    else
+        read -p "Enter port to run on [8000]: " -r input
+        PORT="${input:-8000}"
+    fi
+
+    # Validate port number
+    if ! [[ "${PORT}" =~ ^[0-9]+$ ]] || [ "${PORT}" -lt 1024 ] || [ "${PORT}" -gt 65535 ]; then
+        echo "❌ Invalid port. Use a number between 1024-65535"
+        continue
+    fi
+
+    # Check if chosen port is available (unless it's the default and we already know it's in use)
+    if [ "${PORT}" != "8000" ] || [ "$PORT_IN_USE" = false ]; then
+        if lsof -Pi :${PORT} -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo "❌ Port ${PORT} is already in use. Choose another port."
+            continue
+        fi
+    fi
+
+    break
+done
+
+echo ""
+echo "✨ Configuration:"
+echo "  • Project: ${PROJECT_NAME}"
+echo "  • Port: ${PORT}"
+echo ""
+
+# Update .env file with chosen values
+echo "📝 Updating .env with your configuration..."
+perl -i -pe "s/^PROJECT_NAME=.*/PROJECT_NAME=${PROJECT_NAME}/g" .env
+perl -i -pe "s/^PORT=.*/PORT=${PORT}/g" .env
+perl -i -pe "s/^export COMPOSE_PROJECT_NAME=.*/export COMPOSE_PROJECT_NAME=\${PROJECT_NAME}/g" .env
+perl -i -pe "s/^VITE_PROJECT_NAME=.*/VITE_PROJECT_NAME=\${PROJECT_NAME}/g" .env
+perl -i -pe "s/^export POSTGRES_USER=.*/export POSTGRES_USER=\${PROJECT_NAME}/g" .env
+perl -i -pe "s/^export POSTGRES_DB=.*/export POSTGRES_DB=\${PROJECT_NAME}/g" .env
+
+# If project name changed, also update package.json
+if [ "${PROJECT_NAME}" != "starter_django_react" ]; then
+    KEBAB_NAME=$(echo ${PROJECT_NAME} | tr '_' '-')
+    perl -i -pe "s/\"name\": \".*\"/\"name\": \"${KEBAB_NAME}\"/g" frontend/package.json
+    echo "✅ Updated package.json name to: ${KEBAB_NAME}"
+fi
+
+echo "✅ Configuration updated"
+echo ""
 
 # Step 3: Start Docker services
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -128,8 +175,8 @@ echo "✅ Setup Complete!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "🌐 Your application is running at:"
-echo "   Frontend:  http://localhost:8000"
-echo "   Admin:     http://localhost:8000/admin"
+echo "   Frontend:  http://localhost:${PORT}"
+echo "   Admin:     http://localhost:${PORT}/admin"
 echo ""
 echo "👤 Default admin credentials:"
 echo "   Username:  admin"
@@ -142,7 +189,7 @@ echo "   Restart:          docker compose restart"
 echo "   Shell access:     docker compose exec web bash"
 echo ""
 echo "📚 Next steps:"
-echo "   1. Visit http://localhost:8000 to see your app"
+echo "   1. Visit http://localhost:${PORT} to see your app"
 echo "   2. Check out the README for development workflow"
 echo "   3. Customize your theme in .env (VITE_FRONTEND_THEME)"
 echo ""

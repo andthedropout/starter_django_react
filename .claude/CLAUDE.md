@@ -412,6 +412,114 @@ Use `docker compose exec` directly.
 
 ---
 
+## Session Cookie Isolation
+
+### The Problem
+
+When running multiple Django projects on localhost, even on different ports, they can share the same session and CSRF cookie names (`sessionid`, `csrftoken`). This causes session collisions:
+
+1. Run Project A on `localhost:8000` and log in → sets `sessionid=ABC123`
+2. Stop Project A, start Project B on `localhost:8000` → sets `sessionid=XYZ789`
+3. Browser now has `sessionid=XYZ789` for `localhost:8000`
+4. Return to Project A → Django looks for session `XYZ789` → doesn't exist → logged out
+
+Even worse: if both projects run simultaneously on different ports (8000, 8001), browser cookies are still shared by domain, causing unpredictable behavior.
+
+### The Solution
+
+This template automatically generates **project-specific cookie names** using the `PROJECT_NAME` variable.
+
+#### Backend Implementation
+
+**File: `backend/config/settings.py`** (lines 31-35)
+
+```python
+# Unique session/CSRF cookie names per project to prevent conflicts
+PROJECT_NAME = os.getenv("COMPOSE_PROJECT_NAME", "django")
+SESSION_COOKIE_NAME = f'{PROJECT_NAME}_sessionid'
+CSRF_COOKIE_NAME = f'{PROJECT_NAME}_csrftoken'
+```
+
+Result: A project named `myproject` uses:
+- `myproject_sessionid`
+- `myproject_csrftoken`
+
+#### Frontend Implementation
+
+**File: `frontend/src/lib/getCookie.ts`**
+
+```typescript
+// Get project name from environment
+const PROJECT_NAME = import.meta.env.VITE_PROJECT_NAME || 'django';
+
+// Helper to get CSRF token with correct cookie name
+export function getCSRFToken(): string | null {
+    return getCookie(`${PROJECT_NAME}_csrftoken`);
+}
+
+// Helper to get session ID with correct cookie name
+export function getSessionId(): string | null {
+    return getCookie(`${PROJECT_NAME}_sessionid`);
+}
+```
+
+All authentication and API calls use these helpers instead of hardcoded cookie names.
+
+### Critical Requirements
+
+**VITE_PROJECT_NAME MUST match COMPOSE_PROJECT_NAME**
+
+Both backend and frontend must use the same project name for cookies to work:
+
+```bash
+# .env
+PROJECT_NAME=myproject
+export COMPOSE_PROJECT_NAME=${PROJECT_NAME}  # Backend reads this
+VITE_PROJECT_NAME=${PROJECT_NAME}            # Frontend reads this
+```
+
+The `bin/setup` and `bin/rename-project` scripts automatically keep these in sync.
+
+### How It Works
+
+1. **Setup time**: User runs `./bin/setup`, enters project name → scripts update `PROJECT_NAME` in `.env`
+2. **Backend startup**: Django reads `COMPOSE_PROJECT_NAME`, generates cookie names
+3. **Frontend build**: Vite embeds `VITE_PROJECT_NAME` into bundle
+4. **Runtime**: Frontend uses `getCSRFToken()` which automatically constructs matching cookie name
+5. **Result**: Project A and Project B have completely isolated sessions
+
+### Testing Isolation
+
+To verify cookie isolation is working:
+
+```bash
+# Project A
+echo "PROJECT_NAME=project_a" >> .env
+docker compose up
+# Login, check cookies → should see project_a_sessionid
+
+# Project B (different directory)
+echo "PROJECT_NAME=project_b" >> .env
+docker compose up
+# Login, check cookies → should see project_b_sessionid
+
+# Switch between projects → sessions remain independent
+```
+
+### Railway/Production Deployment
+
+For production deployments on Railway, set the environment variable:
+
+```
+VITE_PROJECT_NAME=your_project_name
+```
+
+This ensures the frontend build matches the backend's cookie names.
+
+**Note**: In production with unique domains, cookie isolation happens naturally by domain. Project-specific names are mainly beneficial for local development, but don't hurt in production.
+
+---
+
 ## Git Commits
 
 ### ⚠️ CRITICAL: DO NOT AUTHOR COMMITS
@@ -531,11 +639,54 @@ When implementing any feature or fix that should go to production:
 ## Template Usage
 
 ### Creating New Project
-1. Update `.env`: `COMPOSE_PROJECT_NAME=mynewproject`
-2. Run: `./bin/rename-project mynewproject MyNewProject`
-3. Verify: Check `backend/config/settings.py`, `frontend/package.json`, `docker compose ps`
 
-**Critical:** Each project needs unique `COMPOSE_PROJECT_NAME` to avoid container conflicts.
+#### Recommended: Use Interactive Setup
+
+```bash
+./bin/setup
+```
+
+The setup script will:
+1. Create `.env` from `.env.example`
+2. Ask for your project name (e.g., `myproject`)
+3. Ask for port to run on (default: 8000, auto-detects conflicts)
+4. Configure all variables automatically:
+   - `PROJECT_NAME=myproject`
+   - `COMPOSE_PROJECT_NAME=${PROJECT_NAME}`
+   - `VITE_PROJECT_NAME=${PROJECT_NAME}`
+   - `POSTGRES_USER=${PROJECT_NAME}`
+   - `POSTGRES_DB=${PROJECT_NAME}`
+   - Cookie names: `myproject_sessionid`, `myproject_csrftoken`
+5. Start Docker services
+6. Run database migrations
+
+**Result**: Everything configured correctly with ONE simple command.
+
+#### Alternative: Manual Rename Later
+
+If you skip renaming during setup:
+
+```bash
+./bin/rename-project myproject
+```
+
+This updates all project-specific variables in both `.env` and `.env.example`.
+
+#### Critical Requirements
+
+- **Unique project name**: Each template copy needs unique name (avoids Docker conflicts)
+- **Unique port** (if running multiple projects): Set in `.env` as `PORT=8001`
+- **`VITE_PROJECT_NAME` must match `COMPOSE_PROJECT_NAME`**: Scripts handle this automatically
+
+### Railway Deployment
+
+When deploying to Railway, set environment variable:
+
+```
+VITE_PROJECT_NAME=your_project_name
+```
+
+This ensures frontend cookie names match backend.
 
 ---
 
@@ -656,8 +807,11 @@ docker compose up --build
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | Images/fonts not loading | Missing `/static/` prefix | Always use `/static/` for `/public/` files |
+| **Tailwind build: "content option missing or empty"** | **⚠️ MISLEADING ERROR** - Syntax error in `tailwind.config.js` (e.g., nested single quotes: `'url('...')'`) | Invalid JavaScript syntax prevents config parsing. Fix syntax FIRST (use `'url("...")'`). Don't debug content paths when config is invalid! |
+| **Randomly logged out when switching between projects** | Multiple Django projects on localhost share default cookie names (`sessionid`, `csrftoken`), causing session collisions | Template uses project-specific cookies (`{PROJECT}_sessionid`). Ensure `VITE_PROJECT_NAME` matches `COMPOSE_PROJECT_NAME` in `.env`. Run `./bin/setup` or `./bin/rename-project` to configure automatically. |
+| **CSRF verification failed** | Frontend and backend cookie names don't match (`VITE_PROJECT_NAME` ≠ `COMPOSE_PROJECT_NAME`) | Check both variables in `.env` are set to same value. Frontend uses `getCSRFToken()` helper which constructs cookie name from `VITE_PROJECT_NAME`. |
 | Theme not applying | Wrong env var | Check `VITE_USE_BACKEND_THEMES` in `.env` |
-| Docker conflicts | Non-unique project name | Set unique `COMPOSE_PROJECT_NAME` in `.env` |
+| Docker conflicts | Non-unique project name | Set unique `PROJECT_NAME` in `.env` (automatically sets `COMPOSE_PROJECT_NAME`) |
 | Vite HMR broken | Volume mount issue | Check `compose.yaml` volumes, restart `js` service |
 | Static files 404 (prod) | collectstatic not run | Run `python manage.py collectstatic --no-input` |
 | HTML nesting warnings | Document tags in components | TanStack Start handles `<html>`/`<body>` - only return React content |
@@ -675,11 +829,22 @@ docker compose up --build
 - Frontend: Group by feature, not by type
 
 ### Performance
+
+#### Build Optimization (Production)
+- **Vite config includes aggressive minification** - Terser with 2-pass compression, console.log removal
+- **Code splitting enabled** - React, Router, and UI libraries separated into chunks for better caching
+- **CSS minification** - Enabled by default for smaller stylesheets
+- **DO NOT use `@import` for external fonts** - Causes render-blocking (1,500ms+ delay)
+  - ✅ Good: Self-hosted fonts with `@font-face` (what template uses)
+  - ❌ Bad: `@import url('https://fonts.googleapis.com/...')` in CSS
+
+#### Runtime Optimization
 - Enable SSR for SEO-critical pages (landing, content)
 - Use client-only rendering for interactive dashboards and auth pages
 - Optimize images (WebP preferred)
 - Use database indexes for frequent queries
 - Enable Redis caching for API responses
+- Lazy-load heavy components (use `lazyRouteComponent()` for pages with large dependencies)
 
 ### Security
 - Never commit `.env`
@@ -693,13 +858,25 @@ docker compose up --build
 
 ### Environment Variables
 ```bash
-COMPOSE_PROJECT_NAME=starter_django_react  # Change per project!
+# Master project configuration (set via ./bin/setup or ./bin/rename-project)
+PROJECT_NAME=starter_django_react          # CHANGE per project! (all others derive from this)
+COMPOSE_PROJECT_NAME=${PROJECT_NAME}       # Docker container/volume names (auto-derived)
+VITE_PROJECT_NAME=${PROJECT_NAME}          # Frontend cookie name matching (auto-derived)
+
+# Port configuration
+PORT=8000                                   # External port (change if running multiple projects)
+VITE_PORT=5173                             # Internal Vite dev server port
+
+# Django configuration
 DEBUG=true                                  # false in prod
 SECRET_KEY=insecure_key_for_dev            # Generate new for prod
-PORT=8000
-VITE_PORT=5173
+
+# Theme system
 VITE_USE_BACKEND_THEMES=false              # true=API, false=JSON
+VITE_FRONTEND_THEME=vercel                 # Which theme to load (if using JSON)
 ```
+
+**Critical**: `VITE_PROJECT_NAME` must equal `COMPOSE_PROJECT_NAME` for session cookies to work. Setup scripts handle this automatically.
 
 ### Key Files
 - `.env` - Environment config

@@ -12,6 +12,39 @@ export default defineConfig(({ mode }) => ({
   build: {
     // Disable file watching during production builds to prevent infinite loops
     watch: null,
+    // Enable aggressive minification for production
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,  // Remove console.logs in production
+        drop_debugger: true,
+        passes: 2,  // Run compression twice for better results
+      },
+      mangle: {
+        safari10: true,  // Fix Safari 10+ issues
+      },
+    },
+    cssMinify: true,
+    // Code splitting for better caching and smaller initial bundle
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // Only apply manual chunking to client build (SSR externalizes these modules)
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor';
+            }
+            if (id.includes('@tanstack/react-router') || id.includes('@tanstack/react-start')) {
+              return 'router';
+            }
+            if (id.includes('@radix-ui') || id.includes('class-variance-authority') ||
+                id.includes('clsx') || id.includes('tailwind-merge')) {
+              return 'ui';
+            }
+          }
+        },
+      },
+    },
   },
 
   server: {

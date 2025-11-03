@@ -2,138 +2,136 @@
 
 set -eo pipefail
 
-APP_NAME="${1}"
-MODULE_NAME="${2}"
+PROJECT_NAME="${1}"
 
-FIND_APP_NAME="helloweb"
-FIND_MODULE_NAME="Helloweb"
-FIND_FRAMEWORK="django-react"
-
-# Validate arguments are provided
-if [ -z "${APP_NAME}" ] || [ -z "${MODULE_NAME}" ]; then
-    echo "You must supply both an app and module name, example: ${0} myapp MyApp"
+# Validate argument is provided
+if [ -z "${PROJECT_NAME}" ]; then
+    echo "Usage: ${0} PROJECT_NAME"
+    echo ""
+    echo "Example: ${0} myproject"
+    echo ""
+    echo "PROJECT_NAME must be:"
+    echo "  • Lowercase"
+    echo "  • Start with a letter"
+    echo "  • Contain only letters, numbers, and underscores"
     exit 1
 fi
 
-# Validate app name format (lowercase, no spaces, no special chars except underscore)
-if [[ ! "${APP_NAME}" =~ ^[a-z][a-z0-9_]*$ ]]; then
-    echo "❌ Error: APP_NAME must be lowercase, start with a letter, and contain only letters, numbers, and underscores"
-    echo "   Examples: myapp, my_app, myapp123"
-    exit 1
-fi
-
-# Validate module name format (PascalCase, no spaces, no special chars)
-if [[ ! "${MODULE_NAME}" =~ ^[A-Z][a-zA-Z0-9]*$ ]]; then
-    echo "❌ Error: MODULE_NAME must be PascalCase and contain only letters and numbers"
-    echo "   Examples: MyApp, MyNewApp, MyApp123"
+# Validate project name format
+if [[ ! "${PROJECT_NAME}" =~ ^[a-z][a-z0-9_]*$ ]]; then
+    echo "❌ Error: PROJECT_NAME must be lowercase, start with a letter, and contain only letters, numbers, and underscores"
+    echo "   Examples: myproject, my_project, myproject123"
     exit 1
 fi
 
 # Check if name is different from current
-if [ "${APP_NAME}" = "${FIND_APP_NAME}" ]; then
-    echo "Your new app name must be different than the current app name"
-    exit 1
+CURRENT_NAME=$(grep -E "^PROJECT_NAME=" .env 2>/dev/null | cut -d'=' -f2 || echo "starter_django_react")
+if [ "${PROJECT_NAME}" = "${CURRENT_NAME}" ]; then
+    echo "⚠️  Project is already named '${PROJECT_NAME}'"
+    echo "   No changes needed."
+    exit 0
 fi
 
 cat << EOF
-When renaming your project you'll need to re-create a new database.
+⚠️  WARNING: Renaming Project
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-This can easily be done with Docker, but before this script does it
-please agree that it's ok for this script to delete your current
-project's database(s) by removing any associated Docker volumes.
+This will rename your project from '${CURRENT_NAME}' to '${PROJECT_NAME}'.
+
+The database will be deleted and recreated with the new name.
+This is necessary because Docker volumes are named after the project.
 
 EOF
 
 while true; do
-    read -p "Run docker compose down -v (y/n)? " -r yn
+    read -p "Continue and run 'docker compose down -v'? (y/n): " -r yn
     case "${yn}" in
         [Yy]* )
-          printf "\n--------------------------------------------------------\n"
+          printf "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
           docker compose down -v
-          printf -- "--------------------------------------------------------\n"
-
+          printf "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
           break;;
-        [Nn]* ) exit;;
-        * ) echo "";;
+        [Nn]* )
+          echo "Cancelled. No changes made."
+          exit;;
+        * ) echo "Please answer y or n";;
     esac
 done
 
-# -----------------------------------------------------------------------------
-# The core of the script which renames a few things.
-# -----------------------------------------------------------------------------
-echo "🔄 Renaming project files..."
-find . -type f -exec \
-  perl -i \
-    -pe "s/(${FIND_APP_NAME}${FIND_FRAMEWORK}|${FIND_APP_NAME})/${APP_NAME}/g;" \
-    -pe "s/${FIND_MODULE_NAME}/${MODULE_NAME}/g;" {} +
-
-# Update .env file if it exists
+# Update .env file
 if [ -f .env ]; then
-  echo "📝 Updating .env with new project name..."
-  perl -i -pe "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=${APP_NAME}/g" .env
-  perl -i -pe "s/POSTGRES_USER=.*/POSTGRES_USER=${APP_NAME}/g" .env
-  perl -i -pe "s/POSTGRES_DB=.*/POSTGRES_DB=${APP_NAME}/g" .env
+  echo "📝 Updating .env..."
+  perl -i -pe "s/^PROJECT_NAME=.*/PROJECT_NAME=${PROJECT_NAME}/g" .env
   echo "✅ .env updated"
 fi
 
-# Update .env.example as well
+# Update .env.example
 if [ -f .env.example ]; then
-  echo "📝 Updating .env.example with new project name..."
-  perl -i -pe "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=${APP_NAME}/g" .env.example
-  perl -i -pe "s/POSTGRES_USER=.*/POSTGRES_USER=${APP_NAME}/g" .env.example
-  perl -i -pe "s/POSTGRES_DB=.*/POSTGRES_DB=${APP_NAME}/g" .env.example
+  echo "📝 Updating .env.example..."
+  perl -i -pe "s/^PROJECT_NAME=.*/PROJECT_NAME=${PROJECT_NAME}/g" .env.example
   echo "✅ .env.example updated"
 fi
-# -----------------------------------------------------------------------------
+
+# Update frontend package.json name
+if [ -f frontend/package.json ]; then
+  KEBAB_NAME=$(echo ${PROJECT_NAME} | tr '_' '-')
+  echo "📝 Updating frontend/package.json..."
+  perl -i -pe "s/\"name\": \".*\"/\"name\": \"${KEBAB_NAME}\"/g" frontend/package.json
+  echo "✅ frontend/package.json updated (name: ${KEBAB_NAME})"
+fi
 
 cat << EOF
 
---------------------------------------------------------
-✅ Your project has been renamed successfully!
---------------------------------------------------------
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Project Renamed Successfully!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Changes made:
-  • App name:     ${FIND_APP_NAME} → ${APP_NAME}
-  • Module name:  ${FIND_MODULE_NAME} → ${MODULE_NAME}
-  • .env:         COMPOSE_PROJECT_NAME=${APP_NAME}
-  • Database:     POSTGRES_DB=${APP_NAME}
+  • PROJECT_NAME:           ${CURRENT_NAME} → ${PROJECT_NAME}
+  • COMPOSE_PROJECT_NAME:   Derived from \${PROJECT_NAME}
+  • VITE_PROJECT_NAME:      Derived from \${PROJECT_NAME}
+  • POSTGRES_USER:          Derived from \${PROJECT_NAME}
+  • POSTGRES_DB:            Derived from \${PROJECT_NAME}
+  • Cookie names:           ${PROJECT_NAME}_sessionid, ${PROJECT_NAME}_csrftoken
+  • package.json:           ${KEBAB_NAME}
+
+Next steps:
+  1. Start your services:   docker compose up --build -d
+  2. Run migrations:        docker compose exec web python manage.py migrate
+  3. Create superuser:      docker compose exec web python manage.py createsuperuser
 
 EOF
 
+# Ask if they want to reinitialize git
 function init_git_repo {
   [ -d .git/ ] && rm -rf .git/
 
-cat << EOF
+  cat << EOF
 
---------------------------------------------------------
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 $(git init)
---------------------------------------------------------
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 EOF
 
   git symbolic-ref HEAD refs/heads/main
 }
 
 while true; do
-    read -p "Do you want to init a new local git repo (y/n)? " -r yn
+    read -p "Initialize a new git repository? (y/n): " -r yn
     case "${yn}" in
         [Yy]* ) init_git_repo; break;;
         [Nn]* ) break;;
-        * ) echo "";;
+        * ) echo "Please answer y or n";;
     esac
 done
 
 cat << EOF
 
-We're done here. Everything worked!
+🎉 All done! Your project '${PROJECT_NAME}' is ready to go.
 
-If you're happy with your new project's name you can delete this
-script by running: rm bin/rename-project
+You can run this script again anytime to change the project name.
 
-Or you can keep it around in case you decide to change your project's
-name later on after developing it for a bit. You can re-run this
-script as many times as you want until you're happy.
+Happy coding!
 
-Check out the rest of the README on GitHub to wrap things up:
-
-https://github.com/letam/docker-${FIND_FRAMEWORK}-starter#start-and-setup-the-project
 EOF
