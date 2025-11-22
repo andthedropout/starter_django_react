@@ -941,3 +941,219 @@ VITE_FRONTEND_THEME=vercel                 # Which theme to load (if using JSON)
 **Last Updated**: 2025-10-30
 **Template Version**: 1.1
 **Django**: 5.1.3 | **React**: 18.3.1 | **Bun**: 1.1 | **TanStack Router**: 1.95.2
+
+---
+### IMPORTANT ISSUE WITH TANSTACK THAT COMES UP OFTEN WHEN MAKING CHANGES
+---
+
+# TanStack Router Route Tree Generation Infinite Loop Fix
+
+## Problem Summary
+
+Docker production builds were stuck in an infinite loop with the following error repeating endlessly:
+
+```
+File /app/frontend/src/routeTree.gen.ts was modified by another process during processing.
+```
+
+This prevented the application from building or deploying.
+
+---
+
+## Root Cause
+
+TanStack Router's file watcher was continuously detecting changes to `routeTree.gen.ts` during the build process, creating an infinite regeneration loop:
+
+1. Vite build starts
+2. TanStack Router plugin generates `routeTree.gen.ts`
+3. File watcher detects the new file
+4. Plugin regenerates `routeTree.gen.ts`
+5. File watcher detects the change
+6. **Repeat forever** ♾️
+
+This happened specifically in Docker because:
+- Volume mounts made file changes visible across container/host
+- The plugin was configured to watch and auto-regenerate routes
+- Production build (`NODE_ENV=production`) wasn't disabling the watcher
+
+---
+
+## What Didn't Work
+
+### ❌ Attempt 1: Environment Variable in `.env`
+```bash
+DISABLE_ROUTE_GEN=true
+```
+**Why it failed**: `.env` file is not automatically passed to Docker build context.
+
+### ❌ Attempt 2: ENV in Dockerfile
+```dockerfile
+ENV DISABLE_ROUTE_GEN=true
+```
+**Why it failed**: TanStack Router plugin was still loading and initializing its watcher regardless of the environment variable.
+
+### ❌ Attempt 3: Conditional Plugin Loading in `vite.config.js`
+```javascript
+enableRouteGeneration: process.env.DISABLE_ROUTE_GEN !== 'true'
+```
+**Why it failed**: Plugin still instantiated and watched files even with generation "disabled".
+
+### ❌ Attempt 4: Read-only File Permissions
+```dockerfile
+RUN chmod 444 src/routeTree.gen.ts
+```
+**Why it failed**: The watcher still detected the file and tried to modify it, causing errors instead of skipping.
+
+### ❌ Attempt 5: Deleting `tsr.config.json`
+```dockerfile
+RUN rm -f tsr.config.json
+```
+**Why it failed**: Plugin has default configuration and doesn't require the config file to run.
+
+---
+
+## ✅ Final Solution
+
+**Delete the generated route tree file before building, and regenerate on host only.**
+
+### In Dockerfile (Line 48-50)
+```dockerfile
+# Build TanStack Start for production
+# Route generation happens on HOST machine, routeTree.gen.ts is committed to git
+RUN rm -rf tsr.config.json .tanstack src/routeTree.gen.ts && \
+    NODE_ENV=production bun run build
+```
+
+### On Host Machine (Before Building)
+```bash
+rm -f tsr.config.json .tanstack/router.json src/routeTree.gen.ts
+npx @tanstack/router-cli generate
+git add frontend/src/routeTree.gen.ts
+git commit -m "Update route tree"
+```
+
+### Why This Works
+
+1. **Deleted file forces single generation**: When TanStack Router plugin starts and finds no `routeTree.gen.ts`, it generates it once
+2. **Build completes before watcher triggers**: The build process finishes before the file watcher can detect and react to the file creation
+3. **Production mode helps**: `NODE_ENV=production` reduces watcher aggressiveness
+4. **No pre-existing file to trigger changes**: Starting with a clean slate prevents the "modified by another process" detection
+
+---
+
+## Workflow: How to Add/Change Routes
+
+### 1. Create Route File
+```bash
+# Example: Adding a new dashboard route
+touch frontend/src/routes/dashboard.tsx
+```
+
+### 2. Regenerate Route Tree (Host Machine Only)
+```bash
+cd frontend
+npx @tanstack/router-cli generate
+```
+
+This creates/updates `frontend/src/routeTree.gen.ts`.
+
+### 3. Commit the Generated File
+```bash
+git add frontend/src/routeTree.gen.ts
+git commit -m "Add dashboard route"
+```
+
+### 4. Build in Docker
+```bash
+docker compose up --build
+```
+
+Docker will:
+- Delete old `routeTree.gen.ts`
+- Use the production build process
+- Generate it once and complete
+
+---
+
+## Configuration Reference
+
+### `frontend/vite.config.js` (Lines 87-108)
+```javascript
+plugins: [
+  // Debug logging to verify build state
+  (() => {
+    const disableGen = process.env.DISABLE_ROUTE_GEN === 'true' || process.env.NODE_ENV === 'production';
+    console.log(`[Vite] Build Mode: ${mode}`);
+    console.log(`[Vite] NODE_ENV: ${process.env.NODE_ENV}`);
+    console.log(`[Vite] DISABLE_ROUTE_GEN: ${process.env.DISABLE_ROUTE_GEN}`);
+    console.log(`[Vite] enableRouteGeneration: ${!disableGen}`);
+    return [];
+  })(),
+  tanstackStart({
+    router: {
+      autoCodeSplitting: true,
+      // CRITICAL: Do not specify output file if generation is disabled
+      generatedRouteTree: process.env.DISABLE_ROUTE_GEN === 'true' ? undefined : 'routeTree.gen.ts',
+    },
+    // CRITICAL: Disable route generation in production or when explicitly disabled
+    enableRouteGeneration: process.env.DISABLE_ROUTE_GEN !== 'true' && process.env.NODE_ENV !== 'production' && mode !== 'production',
+  }),
+  react(),
+  // ...
+]
+```
+
+### `.env` (Line 178)
+```bash
+DISABLE_ROUTE_GEN="true"
+```
+
+This env var is used in local development to prevent the watcher from running. In Docker builds, we rely on `NODE_ENV=production` instead.
+
+---
+
+## Key Learnings
+
+1. **TanStack Router's file watcher is aggressive**: Even with generation "disabled", the plugin can still watch and react to file changes
+2. **Volume mounts amplify the issue**: Docker volume mounts make file changes immediately visible, triggering watchers faster
+3. **Deleting before building is safer than disabling**: It's more reliable to start clean than to try to disable watchers
+4. **Commit generated files**: For Docker builds, pre-generated route trees prevent build-time generation issues
+5. **Environment variables need explicit passing**: `.env` files don't automatically reach Docker build context
+
+---
+
+## If You Hit This Again
+
+**Symptoms:**
+- Build logs show repeated "File was modified by another process"
+- Build never completes (runs forever)
+- File watcher messages in build output
+
+**Quick Fix:**
+```bash
+# On host
+rm -f frontend/src/routeTree.gen.ts frontend/tsr.config.json frontend/.tanstack/router.json
+
+# In Docker
+docker compose up --build
+```
+
+**Prevention:**
+- Always regenerate route tree on host machine
+- Commit `routeTree.gen.ts` to git
+- Use `NODE_ENV=production` for production builds
+
+---
+
+## Related Files
+
+- `frontend/vite.config.js` - Plugin configuration
+- `Dockerfile.django` - Production build with route tree deletion
+- `frontend/src/routeTree.gen.ts` - Generated route tree (committed to git)
+- `.env` - Environment variables
+
+---
+
+**Last Updated**: 2025-11-22
+**Issue Duration**: ~2 hours of debugging
+**Final Solution**: Delete file before build, regenerate on host only
