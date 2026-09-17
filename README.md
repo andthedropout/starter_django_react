@@ -121,7 +121,7 @@ Migrations are a release step, not a web-start side effect. Back up the database
 4. The frontend healthcheck `/up/` forwards to Django. `/up/ready/` also checks the database; avoid frequent readiness polling if you want the database to sleep.
 5. Create an administrator explicitly in the backend environment. Configure PR environments in Railway with an isolated database; repo files alone do not create preview resources.
 
-Existing Config-as-Code services can select `railway.toml` (backend) and `deploy/railway.frontend.toml` (frontend). [Railway documents Config-as-Code retirement on 2026-12-01](https://docs.railway.com/infrastructure-as-code): use dashboard configuration for new services, or import the actual project with `railway config pull` and review its plan before migrating. No cloud changes are applied by this starter.
+[Railway has deprecated Config-as-Code](https://docs.railway.com/infrastructure-as-code). Configure each service explicitly in the dashboard; no root `railway.toml` is shipped because it overrides both services' Dockerfile settings. For Infrastructure-as-Code, import the actual project with `railway config pull` and review its plan instead of embedding project-specific IDs in this template.
 
 Dockerfiles use ordinary dependency-layer caching, not cache mounts: Railway requires literal service-specific cache IDs, which would tie this template to one project.
 
@@ -140,7 +140,7 @@ Caddy is the droplet's HTTPS edge; it forwards to the frontend, which forwards A
 
 ## Upgrading an older copy
 
-Themes/backgrounds, duplicated Start packages, custom font loading, unused Redis/Celery services, automatic admin creation, and the destructive rename script are removed. **React SSR is retained.** Old theme tables and existing user volumes are not dropped. Review new env keys while preserving credentials. Stop old services, then remove only this project's obsolete containers with `docker compose up -d --remove-orphans`; don't delete volumes. Auth API paths changed; update external consumers before deployment. Railway now runs the frontend and backend as separate services rather than three processes in one root container.
+Themes/backgrounds, duplicated Start packages, custom font loading, unused Redis/Celery services, automatic admin creation, and the destructive rename script are removed. **React SSR is retained.** Old theme tables and existing user volumes are not dropped. Review new env keys while preserving credentials. Stop old services, then remove only this project's obsolete containers with `docker compose up -d --remove-orphans`; don't delete volumes. Auth API paths changed; update external consumers before deployment. Railway now runs the frontend and backend as separate services rather than three processes in one root container. Before merging an upgrade, configure both production services' Dockerfile paths and Django's migration command in Railway; the old root TOML configuration is removed.
 
 ## References
 
