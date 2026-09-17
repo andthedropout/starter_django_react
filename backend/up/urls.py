@@ -2,7 +2,9 @@ from django.urls import path
 
 from up import views
 
+app_name = "up"
+
 urlpatterns = [
-    path("", views.index, name="index"),
-    path("databases", views.databases, name="databases"),
+    path("", views.liveness, name="liveness"),
+    path("ready/", views.readiness, name="readiness"),
 ]

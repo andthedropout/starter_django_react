@@ -1,187 +1,101 @@
-/* Custom Braveold Bold font */
-@font-face {
-  font-family: 'Braveold';
-  src: url('/fonts/Braveold_Bold.otf') format('opentype');
-  font-weight: bold;
-  font-display: swap;
-}
+/* Restrict discovery to source: scanning dist between client/SSR builds changes CSS hashes. */
+@import 'tailwindcss' source('./');
 
-/* BankGothic font */
-@font-face {
-  font-family: 'BankGothic';
-  src: url('/fonts/BankGothic Md BT.ttf') format('truetype');
-  font-display: swap;
-}
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-html {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-*, *:before, *:after {
-  box-sizing: inherit;
-}
-
+/*
+ * Single neutral shadcn token set. Light values are the default; the dark values are
+ * applied from the OS preference only, which keeps Tailwind's built-in `dark:` variant
+ * in sync without a theme provider, a toggle, or any JavaScript.
+ */
 :root {
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+  --radius: 0.625rem;
 
-  /* Typography, colors, and theming managed by tweakcn system */
-  color-scheme: light dark;
-
-  /* Font loading optimization */
-  font-display: swap;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
 }
 
-/* Universal font loading optimization */
-@font-face {
-  font-display: swap;
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --destructive-foreground: oklch(0.985 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --input: oklch(1 0 0 / 18%);
+    --ring: oklch(0.556 0 0);
+  }
 }
 
-/* Prevent FOUT by ensuring fallback fonts are similar */
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  font-feature-settings: "kern" 1, "liga" 1;
-  text-rendering: optimizeLegibility;
-}
+@theme inline {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
-/* Optimize font loading for all text elements */
-h1, h2, h3, h4, h5, h6, p, span, div, a, button, input, textarea {
-  font-display: swap;
-}
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 
-/* Link styles now handled in @layer base below */
-
-.App > div {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-@layer components {
-  .container {
-    @apply mx-auto px-4;
-  }
-  
-  @media (min-width: 640px) {
-    .container {
-      @apply px-6;
-    }
-  }
-  
-  @media (min-width: 1024px) {
-    .container {
-      @apply px-8;
-    }
-  }
-  
-  /* Theme-aware hover utilities */
-  .hover-lift {
-    @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
-  }
-  
-  .hover-primary {
-    @apply hover:bg-primary hover:text-primary-foreground transition-colors duration-200;
-  }
-  
-  .hover-accent {
-    @apply hover:bg-accent hover:text-accent-foreground transition-colors duration-200;
-  }
-  
-  .hover-muted {
-    @apply hover:bg-muted hover:text-muted-foreground transition-colors duration-200;
-  }
-  
-  .hover-fade {
-    @apply hover:opacity-80 transition-opacity duration-200;
-  }
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground;
-    letter-spacing: var(--letter-spacing);
+    @apply bg-background text-foreground font-sans antialiased;
   }
-  
-  /* Apply theme border radius to common elements */
-  .card, [data-card], .rounded, .rounded-md, .rounded-lg, .rounded-xl {
-    border-radius: var(--radius) !important;
-  }
-  
-  /* For shadcn card components */
-  [data-radix-card-root], [class*="card"] {
-    border-radius: var(--radius) !important;
-  }
-  
-  /* Base link styles - let components override as needed */
-  a {
-    color: inherit;
-    text-decoration: none;
-    transition: all 0.2s ease-in-out;
-  }
-  
-  /* Only style links that don't have specific component classes */
-  a:not([class]):hover {
-    color: var(--primary);
-  }
-  
-  /* Specific link variants */
-  .link-muted {
-    color: var(--muted-foreground);
-  }
-  
-  .link-muted:hover {
-    color: var(--foreground);
-  }
-  
-  .link-accent {
-    color: var(--accent-foreground);
-  }
-  
-  .link-accent:hover {
-    color: var(--accent-foreground);
-    opacity: 0.8;
-  }
-  
-  /* Enhanced button hover effects that work with theme variables */
-  button:hover {
-    transform: translateY(-1px);
-  }
-  
-  button:active {
-    transform: translateY(0);
-  }
-  
-  /* Ensure focus rings use theme colors */
-  button:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-  }
-}
-
-/* Marquee animation */
-@keyframes marquee {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-50%);
-  }
-}
-
-.animate-marquee {
-  animation: marquee 120s linear infinite;
 }

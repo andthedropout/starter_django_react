@@ -1,197 +1,39 @@
 #!/usr/bin/env bash
+# First-run setup: create .env if missing, start the dev stack, migrate.
+# Safe to re-run: it never rewrites .env, never drops volumes, never seeds users.
+set -euo pipefail
 
-set -e
+cd "$(dirname "$0")/.."
 
-echo "🚀 Django + React Template Setup"
-echo "================================="
-echo ""
-
-# Check if Docker is running
-if ! docker info > /dev/null 2>&1; then
-    echo "❌ Error: Docker is not running"
-    echo "   Please start Docker and try again"
-    exit 1
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker does not appear to be running. Start Docker and try again." >&2
+  exit 1
 fi
 
-# Step 1: Create .env if it doesn't exist
-if [ ! -f .env ]; then
-    echo "📝 Creating .env from .env.example..."
-    cp .env.example .env
-    echo "✅ .env created"
-    echo ""
+if [ -f .env ]; then
+  echo "==> .env exists, leaving it untouched"
 else
-    echo "✅ .env already exists"
-    echo ""
+  cp .env.example .env
+  echo "==> Created .env from .env.example"
+  echo "    Review PROJECT_NAME, SECRET_KEY and the POSTGRES_* values before deploying."
 fi
 
-# Step 2: Project Configuration
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Project Configuration"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "IMPORTANT: Each clone of this template needs:"
-echo "  • Unique project name (avoids Docker conflicts)"
-echo "  • Unique port (if running multiple projects simultaneously)"
-echo ""
-echo "Current settings:"
-echo "  • Project name: starter_django_react"
-echo "  • Port: 8000"
-echo ""
+echo "==> Building and starting postgres, web and js"
+docker compose up -d --build
 
-# Check if port 8000 is already in use
-PORT_IN_USE=false
-if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    PORT_IN_USE=true
-    echo "⚠️  WARNING: Port 8000 is already in use!"
-    echo ""
-fi
+echo "==> Applying migrations"
+docker compose run --rm web python manage.py migrate --noinput
 
-# Ask for project name
-PROJECT_NAME=""
-while true; do
-    read -p "Enter project name [starter_django_react]: " -r input
-    PROJECT_NAME="${input:-starter_django_react}"
+cat <<'EOF'
 
-    # Validate project name
-    if [[ ! "${PROJECT_NAME}" =~ ^[a-z][a-z0-9_]*$ ]]; then
-        echo "❌ Invalid name. Use lowercase letters, numbers, underscores only (must start with letter)"
-        continue
-    fi
+Setup complete.
 
-    break
-done
+  App:                    use the VITE_PORT configured in .env (default 5173)
+  Django:                 use the WEB_PORT configured in .env (default 8000)
+  Logs:                   docker compose logs -f
+  Stop:                   docker compose down
 
-# Ask for port
-PORT=""
-while true; do
-    if [ "$PORT_IN_USE" = true ]; then
-        read -p "Enter port to run on [8001]: " -r input
-        PORT="${input:-8001}"
-    else
-        read -p "Enter port to run on [8000]: " -r input
-        PORT="${input:-8000}"
-    fi
+Create an admin user when you need one:
 
-    # Validate port number
-    if ! [[ "${PORT}" =~ ^[0-9]+$ ]] || [ "${PORT}" -lt 1024 ] || [ "${PORT}" -gt 65535 ]; then
-        echo "❌ Invalid port. Use a number between 1024-65535"
-        continue
-    fi
-
-    # Check if chosen port is available (unless it's the default and we already know it's in use)
-    if [ "${PORT}" != "8000" ] || [ "$PORT_IN_USE" = false ]; then
-        if lsof -Pi :${PORT} -sTCP:LISTEN -t >/dev/null 2>&1; then
-            echo "❌ Port ${PORT} is already in use. Choose another port."
-            continue
-        fi
-    fi
-
-    break
-done
-
-echo ""
-echo "✨ Configuration:"
-echo "  • Project: ${PROJECT_NAME}"
-echo "  • Port: ${PORT}"
-echo ""
-
-# Update .env file with chosen values
-echo "📝 Updating .env with your configuration..."
-perl -i -pe "s/^PROJECT_NAME=.*/PROJECT_NAME=${PROJECT_NAME}/g" .env
-perl -i -pe "s/^PORT=.*/PORT=${PORT}/g" .env
-perl -i -pe "s/^export COMPOSE_PROJECT_NAME=.*/export COMPOSE_PROJECT_NAME=\${PROJECT_NAME}/g" .env
-perl -i -pe "s/^VITE_PROJECT_NAME=.*/VITE_PROJECT_NAME=\${PROJECT_NAME}/g" .env
-perl -i -pe "s/^export POSTGRES_USER=.*/export POSTGRES_USER=\${PROJECT_NAME}/g" .env
-perl -i -pe "s/^export POSTGRES_DB=.*/export POSTGRES_DB=\${PROJECT_NAME}/g" .env
-
-# If project name changed, also update package.json
-if [ "${PROJECT_NAME}" != "starter_django_react" ]; then
-    KEBAB_NAME=$(echo ${PROJECT_NAME} | tr '_' '-')
-    perl -i -pe "s/\"name\": \".*\"/\"name\": \"${KEBAB_NAME}\"/g" frontend/package.json
-    echo "✅ Updated package.json name to: ${KEBAB_NAME}"
-fi
-
-echo "✅ Configuration updated"
-echo ""
-
-# Step 3: Start Docker services
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Starting Docker Services"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "🐳 Building and starting Docker services (this may take a few minutes)..."
-echo ""
-
-docker compose up --build -d
-
-echo ""
-echo "✅ Services started"
-echo ""
-
-# Step 4: Wait for PostgreSQL to be ready
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Waiting for Database"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "⏳ Waiting for PostgreSQL to be ready..."
-
-MAX_ATTEMPTS=30
-ATTEMPT=0
-
-while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    if docker compose exec -T postgres pg_isready -U starter_django_react > /dev/null 2>&1; then
-        echo "✅ PostgreSQL is ready"
-        echo ""
-        break
-    fi
-
-    ATTEMPT=$((ATTEMPT + 1))
-    if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
-        echo "❌ PostgreSQL failed to start after 30 seconds"
-        echo "   Check logs: docker compose logs postgres"
-        exit 1
-    fi
-
-    sleep 1
-done
-
-# Step 5: Run migrations
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Running Database Migrations"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "📊 Running migrations..."
-echo ""
-
-docker compose exec -T web python manage.py migrate --noinput
-
-echo ""
-echo "✅ Migrations complete"
-echo ""
-
-# Step 6: Success message
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "✅ Setup Complete!"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "🌐 Your application is running at:"
-echo "   Frontend:  http://localhost:${PORT}"
-echo "   Admin:     http://localhost:${PORT}/admin"
-echo ""
-echo "👤 Default admin credentials:"
-echo "   Username:  admin"
-echo "   Password:  changeme"
-echo ""
-echo "📝 Useful commands:"
-echo "   View logs:        docker compose logs -f"
-echo "   Stop services:    docker compose down"
-echo "   Restart:          docker compose restart"
-echo "   Shell access:     docker compose exec web bash"
-echo ""
-echo "📚 Next steps:"
-echo "   1. Visit http://localhost:${PORT} to see your app"
-echo "   2. Check out the README for development workflow"
-echo "   3. Customize your theme in .env (VITE_FRONTEND_THEME)"
-echo ""
-echo "Happy coding! 🎉"
-echo ""
+  docker compose exec web python manage.py createsuperuser
+EOF

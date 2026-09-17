@@ -1,73 +1,57 @@
-# Git
+# Keep the build context to what the images actually need:
+# pyproject.toml, uv.lock, backend/, frontend/ (sources + bun.lock).
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# VCS and tooling metadata
 .git
 .gitignore
 .gitattributes
+.github/
+.claude/
+.vscode/
+.idea/
+
+# Docs (not needed at runtime)
+*.md
+docs/
 
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
 *.egg-info/
-dist/
-build/
-*.egg
+.venv/
+venv/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .coverage
 htmlcov/
-*.pyc
-*.pyo
-*.pyd
 
-# Node
+# Tests are not shipped in the runtime image
+**/tests/
+**/test_*.py
+**/conftest.py
+
+# Node / frontend build artifacts (dist is rebuilt inside the image)
 **/node_modules/
-frontend/node_modules/
-node_modules/
 frontend/dist/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-bun-debug.log*
-bun-error.log*
+frontend/.vite/
+.vite-cache/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.swn
-
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-Thumbs.db
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Development
-*.md
-README.md
-docs/
-.claude/
-
-# Media/uploads (don't copy to build context)
-media/
+# Django outputs and user data
+staticfiles/
 public_collected/
+media/
+*.sqlite3
 
-# Testing
-.coverage
-.pytest_cache
-htmlcov
-
-# Misc
+# Local noise
+*.log
+.DS_Store
+._*
+Thumbs.db
 *.bak
 *.tmp
-*.temp

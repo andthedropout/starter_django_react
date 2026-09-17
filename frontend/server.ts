@@ -1,206 +1,110 @@
-/**
- * Production Bun SSR Server for TanStack Start
- *
- * Based on: https://www.answeroverflow.com/m/1420484044466159616
- * Credits: Magnus (adverse-sapphire) & notKamui (exotic-emerald) from TanStack Discord
- *
- * Features:
- * - Pre-loads static assets into memory for performance
- * - Lazy loads large files from disk
- * - Generates ETags for caching
- * - Optional gzip compression
- * - Serves SSR-rendered pages from TanStack Start
- */
+import { resolve, sep } from 'node:path'
+import start from './dist/server/server.js'
 
-import { join } from 'path'
-import { readdir } from 'fs/promises'
-import { createHash } from 'crypto'
+// TanStack Start owns rendering. This adapter owns sockets, static files, and
+// same-origin forwarding to Django; it never implements authentication or SSR.
+const publicOrigin = new URL(required('SITE_URL'))
+const djangoOrigin = new URL(required('DJANGO_API_URL'))
+const clientDirectory = resolve(import.meta.dir, 'client')
+const backendPath = /^\/(api|admin|static|media|up)(\/|$)/
+const hopByHop = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']
 
-// Configuration
-// When server.js runs from /app/frontend/dist/server.js, paths are relative to /app/frontend/dist/
-const CLIENT_DIR = './client'  // Relative to dist/
-const SERVER_ENTRY = './server/server.js'  // Relative to dist/
-const PORT = parseInt(process.env.PORT || '3000', 10)
-
-// Asset loading configuration
-const MAX_ASSET_SIZE = 5 * 1024 * 1024 // 5MB - assets larger than this are lazy-loaded
-const ENABLE_GZIP = true
-const ENABLE_ETAGS = true
-const GZIP_THRESHOLD = 1024 // Only gzip assets larger than 1KB
-
-interface Asset {
-  content: Buffer | null // null = lazy load from disk
-  type: string
-  etag?: string
-  gzipped?: Buffer
-  path?: string // for lazy loading
+function required(name: string) {
+  const value = process.env[name]
+  if (!value) throw new Error(`${name} is required`)
+  return value
 }
 
-interface ServerHandler {
-  default: {
-    fetch: (request: Request) => Promise<Response> | Response
+function endToEndHeaders(source: Headers) {
+  const headers = new Headers(source)
+  for (const name of (headers.get('connection') ?? '').split(',')) {
+    if (name.trim()) headers.delete(name.trim())
+  }
+  for (const name of hopByHop) headers.delete(name)
+  return headers
+}
+
+async function proxy(request: Request, url: URL) {
+  const target = new URL(djangoOrigin)
+  target.pathname = url.pathname
+  target.search = url.search
+  const headers = endToEndHeaders(request.headers)
+  // The configured public origin, not an arbitrary client forwarding header,
+  // determines HTTPS. Django still validates the original Host and Origin.
+  headers.set('host', request.headers.get('host') ?? url.host)
+  headers.set('x-forwarded-proto', publicOrigin.protocol.slice(0, -1))
+  headers.delete('x-forwarded-host')
+  headers.delete('x-forwarded-for')
+  headers.delete('forwarded')
+  try {
+    const response = await fetch(target, {
+      method: request.method,
+      headers,
+      body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+      redirect: 'manual',
+      decompress: false,
+      signal: AbortSignal.timeout(30_000),
+    })
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: endToEndHeaders(response.headers),
+    })
+  } catch (error) {
+    console.error('Django upstream unavailable', error instanceof Error ? error.name : 'Error')
+    return Response.json({ detail: 'Service temporarily unavailable.' }, { status: 502 })
   }
 }
 
-// Asset cache
-const assets = new Map<string, Asset>()
+const server = Bun.serve({
+  hostname: '0.0.0.0',
+  port: Number(process.env.PORT ?? 3000),
+  maxRequestBodySize: 2 * 1024 * 1024,
+  async fetch(request) {
+    const url = new URL(request.url)
+    if (backendPath.test(url.pathname)) return proxy(request, url)
 
-/**
- * Generate ETag from content
- */
-function generateETag(content: Buffer): string {
-  return `"${createHash('md5').update(content).digest('hex')}"`
-}
-
-/**
- * Gzip compress content
- */
-async function gzipContent(content: Buffer): Promise<Buffer> {
-  return Bun.gzipSync(content)
-}
-
-/**
- * Load all static assets into memory
- */
-async function loadStaticAssets() {
-  console.log(`📦 Loading static assets from ${CLIENT_DIR}...`)
-
-  const files = await readdir(CLIENT_DIR, { recursive: true })
-  let memoryLoaded = 0
-  let diskLoaded = 0
-
-  for (const relativePath of files) {
-    const filepath = join(CLIENT_DIR, relativePath)
-    const file = Bun.file(filepath)
-
-    // Check if it's a file (not directory)
-    if (!(await file.exists()) || file.size === 0) continue
-
-    // Normalize route path for URL matching
-    const route = `/${relativePath.split('\\').join('/')}`
-
-    const fileSize = file.size
-    const shouldLoadInMemory = fileSize <= MAX_ASSET_SIZE
-
-    if (shouldLoadInMemory) {
-      // Load small files into memory
-      const content = Buffer.from(await file.arrayBuffer())
-      const asset: Asset = {
-        content,
-        type: file.type || 'application/octet-stream',
+    if (url.pathname.startsWith('/assets/')) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return new Response(null, { status: 405, headers: { Allow: 'GET, HEAD' } })
       }
-
-      // Generate ETag
-      if (ENABLE_ETAGS) {
-        asset.etag = generateETag(content)
-      }
-
-      // Gzip if beneficial
-      if (ENABLE_GZIP && content.length > GZIP_THRESHOLD) {
-        asset.gzipped = await gzipContent(content)
-      }
-
-      assets.set(route, asset)
-      memoryLoaded++
-    } else {
-      // Store reference for lazy loading
-      assets.set(route, {
-        content: null,
-        type: file.type || 'application/octet-stream',
-        path: filepath,
-      })
-      diskLoaded++
-    }
-  }
-
-  console.log(`✅ Loaded ${memoryLoaded} assets into memory, ${diskLoaded} assets will be lazy-loaded`)
-}
-
-/**
- * Serve static asset from memory or disk
- */
-function serveAsset(request: Request, route: string): Response | null {
-  const asset = assets.get(route)
-  if (!asset) return null
-
-  const url = new URL(request.url)
-  const acceptEncoding = request.headers.get('accept-encoding') || ''
-  const ifNoneMatch = request.headers.get('if-none-match')
-
-  // Handle ETag cache validation
-  if (ENABLE_ETAGS && asset.etag && ifNoneMatch === asset.etag) {
-    return new Response(null, { status: 304 })
-  }
-
-  const headers = new Headers({
-    'Content-Type': asset.type,
-    'Cache-Control': 'public, max-age=31536000, immutable',
-  })
-
-  if (asset.etag) {
-    headers.set('ETag', asset.etag)
-  }
-
-  // Serve from memory
-  if (asset.content) {
-    // Serve gzipped version if available and accepted
-    if (asset.gzipped && acceptEncoding.includes('gzip')) {
-      headers.set('Content-Encoding', 'gzip')
-      return new Response(asset.gzipped, { headers })
-    }
-
-    return new Response(asset.content, { headers })
-  }
-
-  // Lazy load from disk
-  if (asset.path) {
-    const file = Bun.file(asset.path)
-    return new Response(file, { headers })
-  }
-
-  return null
-}
-
-/**
- * Main server handler
- */
-async function startServer() {
-  // Load static assets into memory
-  await loadStaticAssets()
-
-  // Dynamically import SSR handler
-  console.log(`🔄 Loading SSR handler from ${SERVER_ENTRY}...`)
-  const serverModule = await import(SERVER_ENTRY) as ServerHandler
-  const ssrHandler = serverModule.default.fetch
-
-  console.log(`🚀 Starting Bun SSR server on port ${PORT}...`)
-
-  Bun.serve({
-    port: PORT,
-    async fetch(request) {
-      const url = new URL(request.url)
-
-      // Try to serve static asset first
-      const staticResponse = serveAsset(request, url.pathname)
-      if (staticResponse) {
-        return staticResponse
-      }
-
-      // Fall back to SSR handler for dynamic routes
+      let pathname: string
       try {
-        return await ssrHandler(request)
-      } catch (error) {
-        console.error('SSR handler error:', error)
-        return new Response('Internal Server Error', { status: 500 })
+        pathname = decodeURIComponent(url.pathname)
+      } catch {
+        return new Response('Bad request', { status: 400 })
       }
-    },
-  })
+      const path = resolve(clientDirectory, `.${pathname}`)
+      if (!path.startsWith(`${clientDirectory}${sep}assets${sep}`)) {
+        return new Response('Not found', { status: 404 })
+      }
+      const file = Bun.file(path)
+      if (!(await file.exists())) return new Response('Not found', { status: 404 })
+      return new Response(request.method === 'HEAD' ? null : file, {
+        headers: {
+          'Content-Type': file.type,
+          'Content-Length': String(file.size),
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      })
+    }
 
-  console.log(`✅ Server running at http://localhost:${PORT}`)
-}
-
-// Start the server
-startServer().catch((error) => {
-  console.error('Failed to start server:', error)
-  process.exit(1)
+    const response = await start.fetch(request)
+    // Never cache personalized HTML or SSR responses in a shared cache.
+    if (!response.headers.has('cache-control')) response.headers.set('cache-control', 'no-store')
+    response.headers.set('x-content-type-options', 'nosniff')
+    return response
+  },
+  error() {
+    return new Response('Internal server error', { status: 500 })
+  },
 })
+
+console.info(`Frontend listening on ${server.url}`)
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, async () => {
+    await server.stop()
+    process.exit(0)
+  })
+}

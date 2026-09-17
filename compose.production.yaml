@@ -1,0 +1,156 @@
+# Production stack for a single droplet:
+#
+#   Caddy (HTTPS) -> frontend (Bun, TanStack Start SSR) -> web (gunicorn) -> postgres
+#
+# The Bun adapter serves SSR and /assets and proxies /api, /admin, /static and
+# /up to Django, so Caddy only needs one upstream. Only Caddy publishes ports.
+#
+# Two images are built here: web from Dockerfile.django, frontend from
+# Dockerfile.frontend. Nothing but Caddy is reachable from outside the host.
+#
+#   cp .env.example .env            # set DOMAIN, ACME_EMAIL, SECRET_KEY, DATABASE_URL, POSTGRES_*
+#   docker compose -f compose.production.yaml build
+#   docker compose -f compose.production.yaml up -d postgres
+#   docker compose -f compose.production.yaml run --rm web python /app/backend/manage.py migrate --noinput
+#   docker compose -f compose.production.yaml up -d
+#
+# Migrations are always that explicit `run --rm web ... migrate` step: containers
+# never migrate on start and nothing initialises, seeds or wipes data.
+
+name: "${PROJECT_NAME:-starter_django_react}"
+
+x-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: "postgres:17-alpine"
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:?set POSTGRES_DB}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: "10s"
+      timeout: "3s"
+      retries: 10
+      start_period: "15s"
+    init: true
+    logging: *logging
+    restart: "unless-stopped"
+    stop_grace_period: "30s"
+    deploy:
+      resources:
+        limits:
+          cpus: "${POSTGRES_CPUS:-1}"
+          memory: "${POSTGRES_MEMORY:-512m}"
+          pids: 256
+    volumes:
+      - "postgres:/var/lib/postgresql/data"
+
+  web:
+    build:
+      context: "."
+      dockerfile: "Dockerfile.django"
+      target: "runtime"
+    depends_on:
+      postgres:
+        condition: "service_healthy"
+    environment:
+      DEBUG: "false"
+      SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY}"
+      # e.g. postgres://user:password@postgres:5432/dbname for the service above
+      DATABASE_URL: "${DATABASE_URL:?set DATABASE_URL}"
+      # Loopback entries keep the container healthcheck (Host: 127.0.0.1) valid.
+      ALLOWED_HOSTS: "${DOMAIN:?set DOMAIN},127.0.0.1,localhost"
+      CSRF_TRUSTED_ORIGINS: "https://${DOMAIN}"
+      TRUST_PROXY_HEADERS: "true"
+      PROJECT_NAME: "${PROJECT_NAME:-starter_django_react}"
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-1}"
+      WEB_THREADS: "${WEB_THREADS:-2}"
+    # Reachable only from the frontend container on the compose network.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/up/', timeout=3)"]
+      interval: "30s"
+      timeout: "5s"
+      retries: 3
+      start_period: "15s"
+    init: true
+    logging: *logging
+    restart: "unless-stopped"
+    stop_grace_period: "30s"
+    deploy:
+      resources:
+        limits:
+          cpus: "${WEB_CPUS:-2}"
+          memory: "${WEB_MEMORY:-768m}"
+          pids: 512
+
+  frontend:
+    build:
+      context: "."
+      dockerfile: "Dockerfile.frontend"
+      target: "frontend-runtime"
+    depends_on:
+      web:
+        condition: "service_healthy"
+    environment:
+      NODE_ENV: "production"
+      PORT: "3000"
+      DJANGO_API_URL: "http://web:8000"
+      SITE_URL: "https://${DOMAIN}"
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://127.0.0.1:3000/up/'); process.exit(r.ok ? 0 : 1)"]
+      interval: "30s"
+      timeout: "5s"
+      retries: 3
+      start_period: "10s"
+    init: true
+    logging: *logging
+    restart: "unless-stopped"
+    stop_grace_period: "10s"
+    deploy:
+      resources:
+        limits:
+          cpus: "${FRONTEND_CPUS:-1}"
+          memory: "${FRONTEND_MEMORY:-512m}"
+          pids: 512
+
+  caddy:
+    image: "caddy:2.10-alpine"
+    depends_on:
+      frontend:
+        condition: "service_started"
+    environment:
+      DOMAIN: "${DOMAIN:?set DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL:?set ACME_EMAIL}"
+    init: true
+    logging: *logging
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    restart: "unless-stopped"
+    deploy:
+      resources:
+        limits:
+          cpus: "${CADDY_CPUS:-1}"
+          memory: "${CADDY_MEMORY:-256m}"
+          pids: 128
+    volumes:
+      - "./deploy/Caddyfile:/etc/caddy/Caddyfile:ro"
+      # Certificates and ACME state must survive recreates or rate limits bite.
+      - "caddy_data:/data"
+      - "caddy_config:/config"
+
+volumes:
+  postgres: {}
+  caddy_data: {}
+  caddy_config: {}

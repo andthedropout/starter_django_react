@@ -1,66 +1,37 @@
-import type { ReactNode } from 'react'
-import { createRootRoute, Outlet, Scripts, HeadContent } from '@tanstack/react-router'
-import { motion } from 'framer-motion'
-import { useTheme } from '@/hooks/useTheme'
-import { Header } from '@/components/layout/Header'
+import type { QueryClient } from '@tanstack/react-query'
+import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
 
-export const Route = createRootRoute({
+import { SiteHeader } from '@/components/layout/site-header'
+import appCss from '@/index.css?url'
+
+export interface RouterContext {
+  queryClient: QueryClient
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({
     meta: [
-      {
-        charSet: 'utf-8',
-      },
-      {
-        name: 'viewport',
-        content: 'width=device-width, initial-scale=1',
-      },
-      {
-        title: 'Django React Start',
-      },
+      { charSet: 'utf-8' },
+      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+      { name: 'color-scheme', content: 'light dark' },
+      { title: 'Django + React Starter' },
     ],
+    links: [{ rel: 'stylesheet', href: appCss }],
   }),
   component: RootComponent,
 })
 
 function RootComponent() {
   return (
-    <RootDocument>
-      <Outlet />
-    </RootDocument>
-  )
-}
-
-function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
-  const { isLoading, fontsReady } = useTheme()
-
-  // CSS-based loading: content is always rendered (for SSR/SEO) but hidden until fonts ready
-  // This prevents hydration mismatches and eliminates the flash
-  const contentReady = !isLoading && fontsReady
-
-  return (
-    <html>
+    <html lang="en">
       <head>
         <HeadContent />
-        <style>{`
-          /* Hide content with CSS until fonts are ready - prevents FOUT */
-          .font-loading {
-            opacity: 0;
-            visibility: hidden;
-          }
-          .font-ready {
-            opacity: 1;
-            visibility: visible;
-            transition: opacity 0.2s ease-out;
-          }
-        `}</style>
       </head>
       <body>
-        <div
-          className={`min-h-screen bg-background flex flex-col ${contentReady ? 'font-ready' : 'font-loading'}`}
-        >
-          <Header />
+        <div className="flex min-h-svh flex-col">
+          <SiteHeader />
           <main className="flex-1">
-            {children}
+            <Outlet />
           </main>
         </div>
         <Scripts />
