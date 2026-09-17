@@ -100,7 +100,7 @@ Install frontend dependencies inside Linux, never into Docker's node_modules fro
 - Three dev services: PostgreSQL, Django, Start/Vite. No idle helper container, duplicated CSS watcher, or unused task worker.
 - Two production app images: Python/Gunicorn/WhiteNoise and Bun/compiled Start output. Neither includes compilers; the frontend runtime has no full node_modules tree. No nginx/supervisor layer inside either image.
 - One Gunicorn worker/two threads by default; tune `WEB_CONCURRENCY` and `WEB_THREADS` only after measuring. PostgreSQL remains major 17 with its existing volume name.
-- Separate dependency/build/runtime layers, install cache mounts, a named Linux node_modules volume, rotated logs, and bounded Compose resources. Watchers use filesystem events, not blanket polling.
+- Separate dependency/build/runtime layers, dependency-layer caching, named Linux dependency volumes, rotated logs, and bounded Compose resources. Watchers use filesystem events, not blanket polling.
 - Stop the stack when idle. Inspect `docker stats` and `docker system df`; never automatically prune unrelated containers, images, caches, or volumes.
 
 ## Deploy
@@ -122,6 +122,8 @@ Migrations are a release step, not a web-start side effect. Back up the database
 5. Create an administrator explicitly in the backend environment. Configure PR environments in Railway with an isolated database; repo files alone do not create preview resources.
 
 Existing Config-as-Code services can select `railway.toml` (backend) and `deploy/railway.frontend.toml` (frontend). [Railway documents Config-as-Code retirement on 2026-12-01](https://docs.railway.com/infrastructure-as-code): use dashboard configuration for new services, or import the actual project with `railway config pull` and review its plan before migrating. No cloud changes are applied by this starter.
+
+Dockerfiles use ordinary dependency-layer caching, not cache mounts: Railway requires literal service-specific cache IDs, which would tie this template to one project.
 
 ### DigitalOcean droplet / other Docker host
 

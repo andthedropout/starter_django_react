@@ -23,8 +23,7 @@ USER bun
 
 COPY --chown=bun:bun frontend/package.json frontend/bun.lock ./
 
-RUN --mount=type=cache,target=/home/bun/.bun/install/cache,uid=1000,gid=1000 \
-    bun install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
 ###############################################################################
 # Development — sources are bind-mounted, compose re-runs the locked install

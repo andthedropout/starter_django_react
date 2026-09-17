@@ -38,8 +38,7 @@ FROM python-base AS python-deps
 
 COPY pyproject.toml uv.lock ./
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-install-project
+RUN uv sync --locked --no-dev --no-install-project
 
 ###############################################################################
 # Development Django image — dependency groups included, no frontend build
@@ -48,8 +47,7 @@ FROM python-base AS development
 
 COPY pyproject.toml uv.lock ./
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project
+RUN uv sync --locked --no-install-project
 
 # Source is bind-mounted at /app/backend by compose; nothing is baked in.
 WORKDIR /app/backend
