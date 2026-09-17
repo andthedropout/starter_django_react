@@ -1,44 +1,36 @@
-#!/bin/bash
-# Development environment launcher with filtered logs
-# Usage: ./bin/dev [up|down|restart|logs]
+#!/usr/bin/env bash
+# Thin wrapper around docker compose for the development stack.
+set -euo pipefail
 
-set -e
+cd "$(dirname "$0")/.."
 
-case "${1:-up}" in
-  up)
-    echo "Starting development environment..."
-    docker compose up -d
-    echo ""
-    echo "Services started. Tailing logs (filtered)..."
-    echo "Press Ctrl+C to stop tailing (services will keep running)"
-    echo ""
-    sleep 2
-    # Filter out the annoying TanStack Router warnings
-    docker compose logs -f 2>&1 | grep --line-buffered -v "routeTree.gen.ts was modified by another process"
-    ;;
+usage() {
+  cat <<'EOF'
+Usage: bin/dev <command> [args...]
 
-  down)
-    echo "Stopping development environment..."
-    docker compose down
-    ;;
+  up [svc...]        start the stack in the background (build if needed)
+  down [args...]     stop the stack (volumes are kept)
+  build [svc...]     rebuild images
+  restart [svc...]   restart services
+  logs [svc...]      follow logs
+  shell [svc]        interactive shell in a service (default: web)
+  manage <args...>   run manage.py inside the running web container
+  migrate            apply migrations in a one-off container
+EOF
+}
 
-  restart)
-    echo "Restarting development environment..."
-    docker compose restart
-    ;;
+command="${1:-}"
+[ $# -gt 0 ] && shift
 
-  logs)
-    echo "Tailing logs (filtered)..."
-    docker compose logs -f 2>&1 | grep --line-buffered -v "routeTree.gen.ts was modified by another process"
-    ;;
-
-  *)
-    echo "Usage: $0 [up|down|restart|logs]"
-    echo ""
-    echo "  up       - Start services in background and tail filtered logs (default)"
-    echo "  down     - Stop all services"
-    echo "  restart  - Restart all services"
-    echo "  logs     - Tail filtered logs"
-    exit 1
-    ;;
+case "${command}" in
+  up)      exec docker compose up -d --build "$@" ;;
+  down)    exec docker compose down "$@" ;;
+  build)   exec docker compose build "$@" ;;
+  restart) exec docker compose restart "$@" ;;
+  logs)    exec docker compose logs -f "$@" ;;
+  shell)   exec docker compose exec "${1:-web}" bash ;;
+  manage)  exec docker compose exec web python manage.py "$@" ;;
+  migrate) exec docker compose run --rm web python manage.py migrate --noinput ;;
+  ""|-h|--help|help) usage ;;
+  *) echo "Unknown command: ${command}" >&2; usage >&2; exit 1 ;;
 esac

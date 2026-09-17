@@ -1,43 +1,32 @@
-# Railway Deployment Configuration
-# This configures the web service only
-# Add PostgreSQL via Railway dashboard: Add New > Database > PostgreSQL
-# For more info: https://docs.railway.app/reference/config-as-code
+# Railway configuration for the PRIVATE Django service.
+#
+# Two services, one per image:
+#   Django (this file, Dockerfile.django)                  private, no public domain
+#   Bun SSR (deploy/railway.frontend.toml, Dockerfile.frontend)  public
+# The frontend service must select deploy/railway.frontend.toml explicitly in its
+# settings so the two services never compete for the same auto-detected config.
+#
+# NOTE: Railway is deprecating config-as-code (railway.toml / railway.json) on
+# 2026-12-01. This file keeps the existing service working; a NEW service must be
+# configured in the dashboard instead: Dockerfile path Dockerfile.django,
+# pre-deploy command `python /app/backend/manage.py migrate --noinput`,
+# healthcheck path /up/, restart on failure.
+# See https://docs.railway.com/infrastructure-as-code
+#
+# Service variables to set in the dashboard: SECRET_KEY, DEBUG=false,
+# ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS, DATABASE_URL (reference the Postgres
+# service), PROJECT_NAME, SITE_URL. PORT is injected by Railway.
 
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile.django"
 
-[build.buildArgs]
-NODE_ENV = "production"
-VITE_USE_BACKEND_THEMES = "false"
-VITE_FRONTEND_THEME = "vercel"
-
 [deploy]
-# startCommand removed - using Dockerfile CMD instead
-healthcheckPath = "/up"
-# Serverless-friendly: 180s allows time for PostgreSQL cold boot (15s) + migrations (30s) + app start (10s)
-# Prevents 404 errors when both app and database are waking from sleep
-healthcheckTimeout = 180
-restartPolicyType = "ON_FAILURE"
-
-# CRITICAL: Volume for persistent media file uploads
-# Railway volumes are mounted with root ownership (UID 0)
-# MUST set RAILWAY_RUN_UID=0 in environment variables for write permissions
-[[deploy.volumes]]
-mountPath = "/mnt/media"
-
-# PR Preview Environments
-# Automatically creates isolated preview deployments for each pull request
-# Each PR gets its own PostgreSQL database and Django instance
-[environments.pr]
-[environments.pr.build.buildArgs]
-NODE_ENV = "production"
-VITE_USE_BACKEND_THEMES = "false"
-VITE_FRONTEND_THEME = "cyberpunk"  # Visual distinction from production
-
-[environments.pr.deploy]
-healthcheckPath = "/up"
-# Faster feedback for PR testing (vs 180s in production)
+# Migrations run once per deploy, before the new container takes traffic.
+# The image already has the locked virtualenv on PATH, so no uv at runtime.
+preDeployCommand = ["python /app/backend/manage.py migrate --noinput"]
+healthcheckPath = "/up/"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
-# No media volume for PR environments (cost optimization)
+restartPolicyMaxRetries = 3
+numReplicas = 1

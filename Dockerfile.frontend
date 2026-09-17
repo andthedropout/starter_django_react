@@ -1,0 +1,71 @@
+# syntax=docker/dockerfile:1.7
+#
+# Frontend images (Bun 1.4.2). Build context is the repository root.
+#
+# Targets:
+#
+#   frontend-deps      locked node_modules (build only)
+#   frontend-dev       Vite dev server, used by compose
+#   frontend-build     TanStack Start SSR bundle + client assets (build only)
+#   frontend-runtime   Bun runtime: SSR + /assets, proxies the rest to Django (default)
+#
+#   docker build -f Dockerfile.frontend -t app-frontend .
+
+###############################################################################
+# Dependencies — pinned Bun, locked install, cached download dir
+###############################################################################
+FROM oven/bun:1.4.2-slim AS frontend-deps
+
+WORKDIR /app/frontend
+
+RUN chown -R bun:bun /app
+USER bun
+
+COPY --chown=bun:bun frontend/package.json frontend/bun.lock ./
+
+RUN --mount=type=cache,target=/home/bun/.bun/install/cache,uid=1000,gid=1000 \
+    bun install --frozen-lockfile
+
+###############################################################################
+# Development — sources are bind-mounted, compose re-runs the locked install
+###############################################################################
+FROM frontend-deps AS frontend-dev
+
+ENV NODE_ENV=development
+
+EXPOSE 5173
+
+CMD ["bun", "run", "dev"]
+
+###############################################################################
+# Production build — `bun run build` runs `vite build` (dist/client + dist/server)
+# and bundles the Bun adapter into a self-contained dist/server.js, so the
+# runtime image needs neither node_modules nor sources.
+###############################################################################
+FROM frontend-deps AS frontend-build
+
+
+COPY --chown=bun:bun frontend/ ./
+
+RUN bun run build \
+    && test -f dist/server.js \
+    && test -d dist/client
+
+###############################################################################
+# Runtime (default target) — nonroot Bun, only the built output
+###############################################################################
+FROM oven/bun:1.4.2-slim AS frontend-runtime
+
+ENV NODE_ENV=production \
+    PORT=3000
+
+WORKDIR /app/frontend
+
+COPY --from=frontend-build --chown=bun:bun /app/frontend/dist/server.js ./dist/server.js
+COPY --from=frontend-build --chown=bun:bun /app/frontend/dist/client ./dist/client
+
+USER bun
+
+EXPOSE 3000
+
+CMD ["bun", "dist/server.js"]

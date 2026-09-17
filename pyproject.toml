@@ -1,7 +1,31 @@
-[tool.black]
-line-length = 79
+[project]
+name = "starter-django-react"
+version = "0.1.0"
+description = "Django REST API + TanStack Start SSR frontend starter"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "django==5.2.17",
+    "djangorestframework==3.18.1",
+    "dj-database-url==3.1.2",
+    "gunicorn==26.2.0",
+    "psycopg[binary]==3.3.5",
+    "whitenoise==6.12.0",
+]
 
-[tool.isort]
-profile = "black"
-line_length = 79
-force_single_line = true
+[dependency-groups]
+dev = ["ruff==0.16.8"]
+
+[tool.uv]
+# The repository is not an installable package: dependencies only.
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["**/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "up", "users"]

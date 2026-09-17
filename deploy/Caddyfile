@@ -1,0 +1,19 @@
+# Caddy terminates HTTPS on the droplet and forwards everything to the Bun
+# frontend runtime, which serves SSR + /assets and proxies /api, /admin, /static,
+# /media and /up to Django. Certificates for {$DOMAIN} are issued automatically
+# (ACME HTTP/TLS-ALPN) and persisted in the caddy_data volume.
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy frontend:3000
+
+	log {
+		output stderr
+		format console
+	}
+}

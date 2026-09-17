@@ -1,129 +1,118 @@
-x-app: &default-app
-  build:
-    context: "."
-    dockerfile: "Dockerfile.django"
-    target: "app"
-    args:
-      - "UID=${UID:-1000}"
-      - "GID=${GID:-1000}"
-      - "DEBUG=${DEBUG:-false}"
-      - "NODE_ENV=${NODE_ENV:-production}"
-  depends_on:
-    postgres:
-      condition: "service_started"
-      required: false
-    redis:
-      condition: "service_started"
-      required: false
-  env_file:
-    - ".env"
-  restart: "${DOCKER_RESTART_POLICY:-unless-stopped}"
-  stop_grace_period: "3s"
-  tty: true
-  volumes:
-    - ".:/app"  # Mount entire project for hot reload in development
-    - "/app/public_collected"  # Protect built fonts/assets from being overwritten by host mount
-    - "/app/public/fonts"  # Protect downloaded fonts from being overwritten by host mount
-    - "./media:/mnt/media"  # User uploads - matches Railway volume mount path
+# Development stack: postgres + Django (runserver) + Vite (Bun). Nothing else.
+#
+#   docker compose up -d          start everything (builds on first run)
+#   docker compose run --rm web python manage.py migrate
+#
+# Django serves the API; TanStack Start/Vite serves React with selective SSR.
+# Frontend requests to /api, /admin, /static and /up are proxied to Django.
 
-x-assets: &default-assets
-  build:
-    context: "."
-    dockerfile: "Dockerfile.django"
-    target: "frontend-dev"
-    args:
-      - "UID=${UID:-1000}"
-      - "GID=${GID:-1000}"
-      - "NODE_ENV=${NODE_ENV:-development}"
-  env_file:
-    - ".env"
-  profiles: ["assets"]
-  restart: "${DOCKER_RESTART_POLICY:-unless-stopped}"
-  stop_grace_period: "0"
-  tty: true
-  volumes:
-    - ".:/app"
-    - "/app/frontend/node_modules"
-    - "./.vite-cache:/app/frontend/node_modules/.vite"  # Mount .vite cache on host so it can be cleared
+name: "${PROJECT_NAME:-starter_django_react}"
+
+x-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   postgres:
+    # Major 17 as before; the existing `postgres` volume is reused untouched.
+    image: "postgres:17-alpine"
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-password}"
+      POSTGRES_DB: "${POSTGRES_DB:-postgres}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+      interval: "5s"
+      timeout: "3s"
+      retries: 10
+      start_period: "10s"
+    init: true
+    logging: *logging
+    restart: "${DOCKER_RESTART_POLICY:-unless-stopped}"
+    stop_grace_period: "10s"
     deploy:
       resources:
         limits:
-          cpus: "${DOCKER_POSTGRES_CPUS:-0}"
-          memory: "${DOCKER_POSTGRES_MEMORY:-0}"
-    environment:
-      POSTGRES_USER: "${POSTGRES_USER}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      POSTGRES_DB: "${POSTGRES_DB}"
-    image: "postgres:17.1-alpine"
-    profiles: ["postgres"]
-    restart: "${DOCKER_RESTART_POLICY:-unless-stopped}"
-    stop_grace_period: "3s"
+          cpus: "${POSTGRES_CPUS:-1}"
+          memory: "${POSTGRES_MEMORY:-512m}"
+          pids: 256
     volumes:
       - "postgres:/var/lib/postgresql/data"
 
-  redis:
-    deploy:
-      resources:
-        limits:
-          cpus: "${DOCKER_REDIS_CPUS:-0}"
-          memory: "${DOCKER_REDIS_MEMORY:-0}"
-    image: "redis:7.4.1-alpine"
-    profiles: ["redis"]
+  web:
+    build:
+      context: "."
+      dockerfile: "Dockerfile.django"
+      target: "development"
+    command: ["sh", "-c", "uv sync --locked && exec python manage.py runserver 0.0.0.0:8000"]
+    depends_on:
+      postgres:
+        condition: "service_healthy"
+    env_file:
+      - ".env"
+    environment:
+      # Inside the compose network the database always lives on the postgres service.
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: "5432"
+      PYTHONDONTWRITEBYTECODE: "1"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/up/', timeout=3)"]
+      interval: "30s"
+      timeout: "5s"
+      retries: 3
+      start_period: "20s"
+    init: true
+    logging: *logging
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8000}:8000"
     restart: "${DOCKER_RESTART_POLICY:-unless-stopped}"
     stop_grace_period: "3s"
+    deploy:
+      resources:
+        limits:
+          cpus: "${WEB_CPUS:-2}"
+          memory: "${WEB_MEMORY:-768m}"
+          pids: 512
     volumes:
-      - "redis:/data"
-
-  web:
-    <<: *default-app
-    command: gunicorn -c python:config.gunicorn config.wsgi
-    deploy:
-      resources:
-        limits:
-          cpus: "${DOCKER_WEB_CPUS:-0}"
-          memory: "${DOCKER_WEB_MEMORY:-0}"
-    healthcheck:
-      test: "${DOCKER_WEB_HEALTHCHECK_TEST:-curl localhost:8000/up}"
-      interval: "60s"
-      timeout: "3s"
-      start_period: "5s"
-      retries: 3
-    ports:
-      - "${DOCKER_WEB_PORT_FORWARD:-127.0.0.1:8000}:${PORT:-8000}"
-    profiles: ["web"]
-
-  worker:
-    <<: *default-app
-    command: celery -A config worker -l "${CELERY_LOG_LEVEL:-info}" --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
-    entrypoint: []
-    deploy:
-      resources:
-        limits:
-          cpus: "${DOCKER_WORKER_CPUS:-0}"
-          memory: "${DOCKER_WORKER_MEMORY:-0}"
-    profiles: ["worker"]
+      - ".:/app"
+      # Preserve Linux dependencies while exposing manifests for uv add/lock.
+      - "python_dependencies:/app/.venv"
 
   js:
-    <<: *default-assets
-    command: bun dev
-    ports:
-      - "5173:5173"  # Vite dev server (TanStack Start uses Vite)
+    build:
+      context: "."
+      dockerfile: "Dockerfile.frontend"
+      target: "frontend-dev"
+    # Re-run the locked install so a reused node_modules volume converges after
+    # a package.json/bun.lock change, then hand PID 1 to Vite.
+    command: ["sh", "-c", "bun install --frozen-lockfile && exec bun run dev"]
+    # No env_file: the browser-facing build only gets the variables it needs,
+    # never the whole .env (which holds SECRET_KEY and database credentials).
     environment:
-      - DJANGO_API_URL=http://web:8000
-      - VITE_PORT=5173
-      - DISABLE_ROUTE_GEN=true  # Disable TanStack Router file watching in Docker (prevents infinite loops)
-
-  # NOTE: css service removed - Vite handles all CSS including Tailwind
-  # The separate Tailwind watcher (dev:css) was looking for a non-existent css/app.css file
-  # Vite's built-in PostCSS + Tailwind integration is faster and more reliable
-
-  static:
-    <<: *default-assets
-    command: bash -c "sleep infinity"
+      NODE_ENV: "development"
+      DJANGO_API_URL: "http://web:8000"
+      SITE_URL: "${SITE_URL:-http://localhost:5173}"
+      VITE_USE_POLLING: "${VITE_USE_POLLING:-false}"
+    init: true
+    logging: *logging
+    ports:
+      - "127.0.0.1:${VITE_PORT:-5173}:5173"
+    restart: "${DOCKER_RESTART_POLICY:-unless-stopped}"
+    stop_grace_period: "3s"
+    deploy:
+      resources:
+        limits:
+          cpus: "${JS_CPUS:-2}"
+          memory: "${JS_MEMORY:-768m}"
+          pids: 512
+    volumes:
+      - "./frontend:/app/frontend"
+      # Named volume keeps Linux-built dependencies out of reach of host binaries.
+      - "node_modules:/app/frontend/node_modules"
 
 volumes:
   postgres: {}
-  redis: {}
+  node_modules: {}
+  python_dependencies: {}
